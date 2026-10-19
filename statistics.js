@@ -64,16 +64,16 @@ export function buildStatistics(pastGames, profiles, activeGame = null) {
 export function newRecordBadges(previousStats, results) {
   const previous = previousStats.records;
   const definitions = [
-    { type: "general", record: previous.highestGeneral, label: "Nouveau record général" },
-    { type: "order", record: previous.highestOrder, label: "Nouveau record Ordre" },
-    { type: "disorder", record: previous.highestDisorder, label: "Nouveau record Désordre" },
+    { type: "general", record: previous.highestGeneral },
+    { type: "order", record: previous.highestOrder },
+    { type: "disorder", record: previous.highestDisorder },
   ];
-  return definitions.flatMap(({ type, record, label }) => {
+  return definitions.flatMap(({ type, record }) => {
     const newMaximum = Math.max(...results.map((result) => result[type]));
     const previousMaximum = record?.[type] ?? -Infinity;
     if (newMaximum <= previousMaximum) return [];
     return results
       .filter((result) => result[type] === newMaximum)
-      .map((result) => ({ playerId: result.playerId, type, label }));
+      .map((result) => ({ playerId: result.playerId, type }));
   });
 }

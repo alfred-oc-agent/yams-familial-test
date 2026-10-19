@@ -1,7 +1,10 @@
-const CACHE_NAME = "yams-score-v3";
+const CACHE_NAME = "yams-score-v4";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./app.js", "./scoring.js",
-  "./storage.js", "./statistics.js", "./manifest.webmanifest", "./icon.svg",
+  "./storage.js", "./statistics.js", "./i18n.js",
+  "./locales/en.js", "./locales/fr.js", "./locales/es.js", "./locales/de.js",
+  "./locales/zh-Hans.js", "./locales/ja.js", "./locales/ar.js",
+  "./manifest.webmanifest", "./icon.svg",
   "./icon-192.png", "./icon-512.png",
 ];
 

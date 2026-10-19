@@ -1,22 +1,22 @@
 export const COLUMN_IDS = ["order", "disorder"];
 
 export const CATEGORIES = [
-  { id: "ones", label: "Un", kind: "upper", face: 1, help: "Additionnez tous les dés affichant 1." },
-  { id: "twos", label: "Deux", kind: "upper", face: 2, help: "Additionnez tous les dés affichant 2." },
-  { id: "threes", label: "Trois", kind: "upper", face: 3, help: "Additionnez tous les dés affichant 3." },
-  { id: "fours", label: "Quatre", kind: "upper", face: 4, help: "Additionnez tous les dés affichant 4." },
-  { id: "fives", label: "Cinq", kind: "upper", face: 5, help: "Additionnez tous les dés affichant 5." },
-  { id: "sixes", label: "Six", kind: "upper", face: 6, help: "Additionnez tous les dés affichant 6." },
-  { id: "threeKind", label: "Brelan", kind: "variable", min: 5, max: 30, help: "Au moins trois dés identiques. Score : somme des cinq dés." },
-  { id: "fourKind", label: "Carré", kind: "variable", min: 5, max: 30, help: "Au moins quatre dés identiques. Score : somme des cinq dés." },
-  { id: "smallStraight", label: "Petite suite", kind: "fixed", fixed: 20, help: "Quatre valeurs consécutives, avec un cinquième dé quelconque." },
-  { id: "largeStraight", label: "Grande suite", kind: "fixed", fixed: 30, help: "1-2-3-4-5 ou 2-3-4-5-6." },
-  { id: "fullHouse", label: "Full", kind: "fixed", fixed: 40, help: "Un brelan et une paire de valeurs différentes." },
-  { id: "fourAces", label: "Carré d’as", kind: "fixed", fixed: 50, help: "Au moins quatre dés affichant 1." },
-  { id: "underEight", label: "Moins de 8", kind: "fixed", fixed: 60, help: "La somme des cinq dés est strictement inférieure à 8." },
-  { id: "yams", label: "Yam’s", kind: "fixed", fixed: 80, help: "Cinq dés identiques." },
-  { id: "minus", label: "Moins", kind: "variable", min: 19, max: 30, help: "Somme des cinq dés, inférieure au score Plus." },
-  { id: "plus", label: "Plus", kind: "variable", min: 19, max: 30, help: "Somme des cinq dés, supérieure au score Moins." },
+  { id: "ones", kind: "upper", face: 1 },
+  { id: "twos", kind: "upper", face: 2 },
+  { id: "threes", kind: "upper", face: 3 },
+  { id: "fours", kind: "upper", face: 4 },
+  { id: "fives", kind: "upper", face: 5 },
+  { id: "sixes", kind: "upper", face: 6 },
+  { id: "threeKind", kind: "variable", min: 5, max: 30 },
+  { id: "fourKind", kind: "variable", min: 5, max: 30 },
+  { id: "smallStraight", kind: "fixed", fixed: 20 },
+  { id: "largeStraight", kind: "fixed", fixed: 30 },
+  { id: "fullHouse", kind: "fixed", fixed: 40 },
+  { id: "fourAces", kind: "fixed", fixed: 50 },
+  { id: "underEight", kind: "fixed", fixed: 60 },
+  { id: "yams", kind: "fixed", fixed: 80 },
+  { id: "minus", kind: "variable", min: 19, max: 30 },
+  { id: "plus", kind: "variable", min: 19, max: 30 },
 ];
 
 export const UPPER_CATEGORIES = CATEGORIES.filter((category) => category.kind === "upper");
