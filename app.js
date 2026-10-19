@@ -20,6 +20,7 @@ const DICE_GLYPHS = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
 let data;
 let navDepth = 0;
 let noticeTimer = null;
+let lastFocusedTurn = null;
 const ui = {
   screen: "home", playerCount: 4, setupPlayers: [], setupIndex: 0,
   modal: null, dice: [1, 1, 1, 1, 1], completed: null,
@@ -124,7 +125,13 @@ function shell(content, options = {}) {
   </div>`;
 }
 
+function captureScrollState() {
+  const table = document.querySelector(".score-table-wrap");
+  return table ? { tableTop: table.scrollTop, tableLeft: table.scrollLeft, windowX: window.scrollX, windowY: window.scrollY } : null;
+}
+
 function render() {
+  const scrollState = captureScrollState();
   if (ui.screen === "home") app.innerHTML = shell(renderHome(), { compact: true });
   else if (ui.screen === "setup-count") app.innerHTML = shell(renderCountSetup(), { back: true, compact: true });
   else if (ui.screen === "setup-players") app.innerHTML = shell(renderPlayersSetup(), { back: true, compact: true });
@@ -132,11 +139,26 @@ function render() {
   else if (ui.screen === "rules") app.innerHTML = shell(renderRules(), { back: true, showRules: false });
   else if (ui.screen === "stats") app.innerHTML = shell(renderStatistics(), { back: true });
   else if (ui.screen === "results") app.innerHTML = shell(renderResults());
-  afterRender();
+  if (ui.screen !== "game") lastFocusedTurn = null;
+  afterRender(scrollState);
 }
 
-function afterRender() {
-  if (ui.screen === "game" && !ui.modal) requestAnimationFrame(() => document.querySelector(".active-player-head")?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }));
+function afterRender(scrollState) {
+  if (ui.screen === "game") {
+    const turnKey = data.activeGame ? `${data.activeGame.id}:${data.activeGame.timeline.cursor}` : null;
+    const focusNewTurn = !ui.modal && turnKey !== lastFocusedTurn;
+    if (focusNewTurn) lastFocusedTurn = turnKey;
+    requestAnimationFrame(() => {
+      const table = document.querySelector(".score-table-wrap");
+      if (!table) return;
+      if (focusNewTurn) document.querySelector(".active-player-head")?.scrollIntoView({ inline: "center", block: "nearest", behavior: "auto" });
+      if (scrollState) {
+        table.scrollTop = scrollState.tableTop;
+        if (!focusNewTurn) table.scrollLeft = scrollState.tableLeft;
+        window.scrollTo(scrollState.windowX, scrollState.windowY);
+      }
+    });
+  }
   if (ui.modal?.type === "score") requestAnimationFrame(() => document.querySelector("#variable-score")?.focus());
 }
 

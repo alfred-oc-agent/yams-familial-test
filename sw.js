@@ -1,4 +1,4 @@
-const CACHE_NAME = "yams-score-v4";
+const CACHE_NAME = "yams-score-v5";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./app.js", "./scoring.js",
   "./storage.js", "./statistics.js", "./i18n.js",
