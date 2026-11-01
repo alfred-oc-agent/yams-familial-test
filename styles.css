@@ -77,7 +77,8 @@ h2 { margin-bottom: .65rem; font-size: clamp(1.55rem, 3vw, 2.35rem); }
 .player-setup-card legend span { display: inline-grid; place-items: center; width: 28px; height: 28px; margin-right: .3rem; border-radius: 50%; background: var(--green-soft); color: var(--green-dark); }
 .player-setup-card label:not(.check-label) { display: grid; gap: .35rem; color: var(--muted); font-size: .75rem; font-weight: 750; }
 .player-setup-card input[type="text"], .player-setup-card input:not([type]), .player-setup-card select { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); padding: .65rem .75rem; font-size: .95rem; }
-.player-setup-card input[readonly] { background: var(--neutral, #f2efe7); color: var(--muted); }
+.player-setup-card .is-disabled { opacity: .55; }
+.player-setup-card input:disabled, .player-setup-card select:disabled { background: var(--neutral, #f2efe7); color: var(--muted); cursor: not-allowed; }
 .check-label { display: flex; align-items: center; gap: .55rem; font-size: .86rem; font-weight: 700; }
 .check-label input { width: 20px; height: 20px; accent-color: var(--green); }
 .profile-note { margin: 0; color: var(--green); font-size: .78rem; }

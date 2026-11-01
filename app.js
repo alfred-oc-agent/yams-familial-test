@@ -205,14 +205,30 @@ function renderCountSetup() {
   return `<main class="centered-page setup-page"><section class="panel narrow"><p class="eyebrow">${t("setup.countStep")}</p><h1>${t("setup.howMany")}</h1><p class="lead">${t("setup.countHelp")}</p><div class="count-picker" role="group" aria-label="${t("setup.countLabel")}">${Array.from({ length: 12 }, (_, index) => index + 1).map((count) => `<button class="count-button ${ui.playerCount === count ? "selected" : ""}" data-action="set-count" data-count="${count}">${count}</button>`).join("")}</div>${formatPicker(ui.format, "data-format")}<p class="format-help">${t("v3.formatHelp", { count: columnsForFormat(ui.format).length * 16 })}</p><button class="button primary large full" data-action="continue-setup">${t("setup.continue", { count: ui.playerCount })} ${tp("setup.players", ui.playerCount)}</button></section></main>`;
 }
 
+function selectedSetupPlayer(player) {
+  const profile = !player.newPlayer && data.profiles.find((item) => item.id === player.profileId);
+  return {
+    id: player.id,
+    profileId: profile?.id ?? null,
+    name: player.newPlayer ? player.name : profile?.name ?? "",
+    remember: player.newPlayer && player.remember,
+  };
+}
+
 function setupPlayerCard(player, index, profiles) {
-  return `<fieldset class="player-setup-card single-player-card"><legend><span>${index + 1}</span> ${t("common.player")} ${index + 1}</legend><label>${t("common.savedPlayer")}<select data-setup-profile="${index}"><option value="">${t("common.newName")}</option>${profiles.map((profile) => `<option value="${profile.id}" ${player.profileId === profile.id ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("")}</select></label><label>${t("common.name")}<input data-setup-name="${index}" maxlength="24" value="${escapeHtml(player.name)}" placeholder="${t("common.namePlaceholder")}" ${player.profileId ? "readonly" : ""} /></label>${player.profileId ? `<p class="profile-note">${t("common.savedProfile")}</p>` : `<label class="check-label"><input type="checkbox" data-setup-remember="${index}" ${player.remember ? "checked" : ""}/> ${t("common.remember")}</label>`}</fieldset>`;
+  const isNew = player.newPlayer;
+  return `<fieldset class="player-setup-card single-player-card"><legend><span>${index + 1}</span> ${t("common.player")} ${index + 1}</legend>
+    ${profiles.length ? `<label class="${isNew ? "is-disabled" : ""}">${t("common.savedPlayer")}<select data-setup-profile="${index}" ${isNew ? "disabled" : ""}>${profiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${player.profileId === profile.id ? "selected" : ""}>${escapeHtml(profile.name)}</option>`).join("")}</select></label>` : ""}
+    <label class="check-label"><input type="checkbox" data-setup-new="${index}" ${isNew ? "checked" : ""} ${profiles.length ? "" : "disabled"}/> ${t("common.newPlayer")}</label>
+    <label class="${isNew ? "" : "is-disabled"}">${t("common.name")}<input data-setup-name="${index}" maxlength="24" value="${escapeHtml(player.name)}" placeholder="${t("common.namePlaceholder")}" ${isNew ? "" : "disabled"} /></label>
+    <label class="check-label ${isNew ? "" : "is-disabled"}"><input type="checkbox" data-setup-remember="${index}" ${player.remember ? "checked" : ""} ${isNew ? "" : "disabled"}/> ${t("common.remember")}</label>
+  </fieldset>`;
 }
 
 function renderPlayersSetup() {
   const profiles = sortProfilesByRecentUse(data.profiles);
   const player = ui.setupPlayers[ui.setupIndex];
-  const completed = ui.setupPlayers.slice(0, ui.setupIndex).filter((item) => item.name.trim());
+  const completed = ui.setupPlayers.slice(0, ui.setupIndex).map(selectedSetupPlayer).filter((item) => item.name.trim());
   return `<main class="centered-page setup-page"><section class="panel narrow"><p class="eyebrow">${t("setup.playerStep")}</p><h1>${t("setup.orderTitle")}</h1><p class="lead">${t("setup.orderHelp")}</p><div class="setup-progress" aria-label="${t("setup.position", { current: ui.setupIndex + 1, total: ui.playerCount })}">${ui.setupPlayers.map((_, index) => `<span class="${index < ui.setupIndex ? "done" : index === ui.setupIndex ? "current" : ""}">${index + 1}</span>`).join("")}</div>${completed.length ? `<p class="entered-players">${completed.map((item, index) => `<span>${index + 1}. ${escapeHtml(item.name)}</span>`).join("")}</p>` : ""}<form id="player-form">${setupPlayerCard(player, ui.setupIndex, profiles)}${ui.error ? `<p class="form-error" role="alert">${escapeHtml(ui.error)}</p>` : ""}<div class="setup-nav">${ui.setupIndex > 0 ? `<button class="button quiet" type="button" data-action="previous-player">← ${t("setup.previous")}</button>` : "<span></span>"}<button class="button primary large" type="submit">${ui.setupIndex === ui.playerCount - 1 ? t("setup.start") : `${t("setup.next")} →`}</button></div></form></section></main>`;
 }
 
@@ -357,8 +373,9 @@ function beginSetup() {
 
 async function startGame() {
   const usedAt = new Date().toISOString();
-  const basePlayers = ui.setupPlayers.map((player) => ({ id: id("player"), name: player.name.trim(), profileId: player.profileId || (player.remember ? player.id : null) }));
-  data.profiles = updateRememberedProfiles(data.profiles, ui.setupPlayers, usedAt);
+  const selectedPlayers = ui.setupPlayers.map(selectedSetupPlayer);
+  const basePlayers = selectedPlayers.map((player) => ({ id: id("player"), name: player.name.trim(), profileId: player.profileId || (player.remember ? player.id : null) }));
+  data.profiles = updateRememberedProfiles(data.profiles, selectedPlayers, usedAt);
   data.activeGame = { id: id("game"), status: "active", format: ui.format, createdAt: usedAt, basePlayers, timeline: { events: [], cursor: 0 } };
   await persist();
   requestPersistentStorage();
@@ -366,7 +383,7 @@ async function startGame() {
 }
 
 async function advancePlayerSetup() {
-  const player = ui.setupPlayers[ui.setupIndex];
+  const player = selectedSetupPlayer(ui.setupPlayers[ui.setupIndex]);
   if (!player.name.trim()) { ui.error = t("setup.missingName"); render(); return; }
   ui.error = "";
   if (ui.setupIndex === ui.playerCount - 1) await startGame();
@@ -479,7 +496,7 @@ app.addEventListener("click", async (event) => {
   else if (action === "new-game") data.activeGame ? openModal({ type: "abandon" }) : beginSetup();
   else if (action === "confirm-abandon") { data = archiveActiveGame(data, "abandoned", new Date().toISOString()); await persist(); ui.modal = null; history.replaceState(historyState(), ""); beginSetup(); }
   else if (action === "set-count") { ui.playerCount = Number(button.dataset.count); render(); }
-  else if (action === "continue-setup") { ui.setupPlayers = Array.from({ length: ui.playerCount }, () => ({ id: id("profile"), profileId: null, name: "", remember: false })); ui.setupIndex = 0; navigate("setup-players"); }
+  else if (action === "continue-setup") { const firstProfile = sortProfilesByRecentUse(data.profiles)[0]; ui.setupPlayers = Array.from({ length: ui.playerCount }, () => ({ id: id("profile"), profileId: firstProfile?.id ?? null, newPlayer: !firstProfile, name: "", remember: false })); ui.setupIndex = 0; navigate("setup-players"); }
   else if (action === "previous-player") { ui.setupIndex = Math.max(0, ui.setupIndex - 1); ui.error = ""; render(); }
   else if (action === "rules") navigate("rules");
   else if (action === "stats") navigate("stats");
@@ -507,16 +524,27 @@ app.addEventListener("change", async (event) => {
   if (event.target.matches("[data-language]")) { data.settings.locale = setLocale(event.target.value); refreshTagline("home"); await persist(); render(); return; }
   const profileIndex = event.target.dataset.setupProfile;
   const rememberIndex = event.target.dataset.setupRemember;
-  if (profileIndex !== undefined) {
-    const index = Number(profileIndex);
+  const newIndex = event.target.dataset.setupNew;
+  if (newIndex !== undefined) {
+    const player = ui.setupPlayers[Number(newIndex)];
+    player.newPlayer = !data.profiles.length || event.target.checked;
+    ui.error = ""; render();
+    requestAnimationFrame(() => document.querySelector(player.newPlayer ? "[data-setup-name]" : "[data-setup-profile]")?.focus());
+  } else if (profileIndex !== undefined) {
+    const player = ui.setupPlayers[Number(profileIndex)];
+    if (player.newPlayer) return;
     const profile = data.profiles.find((item) => item.id === event.target.value);
-    ui.setupPlayers[index].profileId = profile?.id ?? null; ui.setupPlayers[index].name = profile?.name ?? ""; ui.setupPlayers[index].remember = false; render();
-  } else if (rememberIndex !== undefined) ui.setupPlayers[Number(rememberIndex)].remember = event.target.checked;
+    if (profile) player.profileId = profile.id;
+    ui.error = ""; render();
+  } else if (rememberIndex !== undefined) {
+    const player = ui.setupPlayers[Number(rememberIndex)];
+    if (player.newPlayer) player.remember = event.target.checked;
+  }
 });
 
 app.addEventListener("input", (event) => {
   const index = event.target.dataset.setupName;
-  if (index !== undefined) ui.setupPlayers[Number(index)].name = event.target.value;
+  if (index !== undefined && ui.setupPlayers[Number(index)].newPlayer) ui.setupPlayers[Number(index)].name = event.target.value;
 });
 
 app.addEventListener("submit", async (event) => {

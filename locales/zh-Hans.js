@@ -2,7 +2,7 @@ import en from "./en.js";
 export default {
   ...en, dir: "ltr",
   app: { title: "家庭快艇骰子", storageError: "存储错误", storageTitle: "无法打开计分表", retry: "重试", loading: "正在准备游戏…", needsJs: "此应用需要 JavaScript 才能计分。" },
-  common: { back: "返回", home: "主页", rules: "规则", close: "关闭", cancel: "取消", confirm: "确认", order: "顺序", disorder: "自由", points: "分", player: "玩家", savedPlayer: "已保存的玩家", newName: "新名字", name: "名字", namePlaceholder: "名字或昵称", remember: "记住此玩家", savedProfile: "已保存档案，统计数据将合并。", score: "得分", sacrifice: "划掉此格", validate: "确认", category: "类别", reveal: "稍后揭晓" },
+  common: { back: "返回", home: "主页", rules: "规则", close: "关闭", cancel: "取消", confirm: "确认", order: "顺序", disorder: "自由", points: "分", player: "玩家", savedPlayer: "已保存的玩家", newPlayer: "新玩家", newName: "新名字", name: "名字", namePlaceholder: "名字或昵称", remember: "记住此玩家", savedProfile: "已保存档案，统计数据将合并。", score: "得分", sacrifice: "划掉此格", validate: "确认", category: "类别", reveal: "稍后揭晓" },
   home: { eyebrow: "家庭游戏桌", resume: "继续游戏", newGame: "新游戏", readRules: "游戏规则", statistics: "统计", saved: "已保存 · {players} 位玩家 · 已记录 {scores} 次", offline: "可在此设备上离线使用", language: "语言" },
   setup: { countStep: "新游戏 · 1/2", howMany: "有多少位玩家？", countHelp: "请选择参与人数。", countLabel: "玩家人数", continue: "以 {count} 人继续", playerStep: "新游戏 · 2/2", orderTitle: "游戏顺序", orderHelp: "请严格按照出场顺序逐个添加玩家。", position: "第 {current} 位，共 {total} 位", previous: "上一位玩家", next: "下一位玩家", start: "开始游戏", missingName: "请为此玩家输入名字。", players: { one: "位玩家", other: "位玩家" } },
   game: { turn: "当前玩家", entry: "第 {count} 次记录", analyze: "寻找可选项", undo: "撤销", redo: "重做", quit: "退出", hint: "点击高亮格填写结果。得分会自动保存。", yourTurn: "轮到此玩家", playerNumber: "玩家 {count}", totalIntermediate: "上半区合计", bonus: "奖励", columnTotal: "列合计", generalTotal: "总分", sacrificed: "已划掉" },
