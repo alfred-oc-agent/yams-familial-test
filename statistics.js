@@ -1,7 +1,7 @@
-import { finalRanking } from "./scoring.js";
+import { finalRanking, gameFormat, earlyResults } from "./scoring.js";
 
 export function completedGameRecord(game, players, endedAt) {
-  const ranking = finalRanking(players);
+  const ranking = finalRanking(players, game);
   let previousScore = null;
   let previousRank = 0;
   const results = ranking.map((player, index) => {
@@ -13,20 +13,27 @@ export function completedGameRecord(game, players, endedAt) {
       profileId: player.profileId,
       name: player.name,
       rank,
-      order: player.summary.order.total,
-      disorder: player.summary.disorder.total,
+      order: gameFormat(game) === "disorder" ? null : player.summary.order.total,
+      disorder: gameFormat(game) === "order" ? null : player.summary.disorder.total,
       general: player.summary.general,
     };
   });
   return { ...structuredClone(game), status: "completed", endedAt, results };
 }
 
+export function interruptedGameRecord(game, players, endedAt) {
+  return { ...structuredClone(game), status: "abandoned", endedAt, ...earlyResults(players, game) };
+}
+
 function extreme(records, key, direction) {
+  records = records.filter((record) => Number.isFinite(record[key]));
   if (records.length === 0) return null;
   return [...records].sort((a, b) => direction * (a[key] - b[key]))[0];
 }
 
-export function buildStatistics(pastGames, profiles, activeGame = null) {
+export function buildStatistics(pastGames, profiles, activeGame = null, format = "classic") {
+  pastGames = pastGames.filter((game) => gameFormat(game) === gameFormat(format));
+  if (activeGame && gameFormat(activeGame) !== gameFormat(format)) activeGame = null;
   const completed = pastGames.filter((game) => game.status === "completed");
   const abandoned = pastGames.filter((game) => game.status === "abandoned");
   const results = completed.flatMap((game) => game.results.map((result) => ({ ...result, gameId: game.id, date: game.endedAt })));
@@ -69,7 +76,7 @@ export function newRecordBadges(previousStats, results) {
     { type: "disorder", record: previous.highestDisorder },
   ];
   return definitions.flatMap(({ type, record }) => {
-    const newMaximum = Math.max(...results.map((result) => result[type]));
+    const newMaximum = Math.max(...results.map((result) => result[type]).filter(Number.isFinite));
     const previousMaximum = record?.[type] ?? -Infinity;
     if (newMaximum <= previousMaximum) return [];
     return results

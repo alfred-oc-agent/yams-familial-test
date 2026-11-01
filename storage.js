@@ -8,7 +8,7 @@ export const EMPTY_APP_DATA = Object.freeze({
   activeGame: null,
   profiles: [],
   pastGames: [],
-  settings: { locale: null },
+  settings: { locale: null, keepAwake: true },
 });
 
 export function normalizeAppData(value) {
@@ -20,6 +20,7 @@ export function normalizeAppData(value) {
     pastGames: Array.isArray(source.pastGames) ? source.pastGames : [],
     settings: {
       locale: typeof source.settings?.locale === "string" ? source.settings.locale : null,
+      keepAwake: source.settings?.keepAwake !== false,
     },
   };
 }

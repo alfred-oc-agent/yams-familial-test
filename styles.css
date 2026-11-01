@@ -101,14 +101,14 @@ h2 { margin-bottom: .65rem; font-size: clamp(1.55rem, 3vw, 2.35rem); }
 .rule-card p { margin: .45rem 0 0; font-size: .86rem; }
 
 .game-shell { min-height: 100vh; background: #eee8dc; }
-.game-toolbar { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: minmax(120px,1fr) auto minmax(360px,1fr); align-items: center; gap: 1rem; min-height: 72px; padding: max(.5rem,env(safe-area-inset-top)) 1rem .5rem; background: rgba(16,39,31,.97); color: white; box-shadow: 0 6px 20px rgba(16,39,31,.18); }
+.game-toolbar { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: auto minmax(150px,1fr) auto; align-items: center; gap: 1rem; min-height: 72px; padding: max(.5rem,env(safe-area-inset-top)) 1rem .5rem; background: rgba(16,39,31,.97); color: white; box-shadow: 0 6px 20px rgba(16,39,31,.18); }
 .game-toolbar .brand { color: white; justify-self: start; }.game-toolbar .mini-die { --die-dot: var(--ink); background-color: var(--paper); }
 .turn-identity { display: grid; min-width: 190px; text-align: center; }.turn-identity small { color: #9dd8bd; font-size: .62rem; font-weight: 850; letter-spacing: .15em; }.turn-identity strong { font-family: Georgia,serif; font-size: 1.25rem; }.turn-identity span { color: rgba(255,255,255,.58); font-size: .66rem; }
 .game-actions { display: flex; justify-content: flex-end; gap: .4rem; }
 .toolbar-button { display: grid; place-items: center; grid-template-columns: auto auto; gap: .3rem; min-height: 42px; border: 1px solid rgba(255,255,255,.2); border-radius: 11px; background: rgba(255,255,255,.08); color: white; padding: .5rem .65rem; font-weight: 750; }
 .toolbar-button:disabled { opacity: .3; }
 .toolbar-button span { font-size: .72rem; }
-.toolbar-symbol { font-size: .66rem; letter-spacing: -.02em; }
+.toolbar-symbol { font-size: 1.3rem; letter-spacing: -.02em; }
 .game-main { padding: 1rem 1rem 3rem; }
 .turn-mobile { display: none; }
 .score-table-wrap { overflow: auto; max-height: calc(100vh - 120px); border: 1px solid var(--line-strong); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); overscroll-behavior: contain; }
@@ -170,7 +170,7 @@ h2 { margin-bottom: .65rem; font-size: clamp(1.55rem, 3vw, 2.35rem); }
 .results-actions .full-span { grid-column: 1 / -1; }
 @keyframes reveal-result { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .game-toolbar { grid-template-columns: auto 1fr; }.turn-identity { display: none; }.game-actions { justify-content: flex-end; }.toolbar-button { grid-template-columns: 1fr; }.toolbar-button span { display: none; }
 }
 
@@ -190,4 +190,38 @@ html[dir="rtl"] .score-table tr > *:last-child { border-left: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior:auto!important; animation-duration:.001ms!important; animation-iteration-count:1!important; transition-duration:.001ms!important; }
+}
+
+/* V3: formats and interrupted results. */
+.format-picker { display: grid; gap: .5rem; margin: 1rem 0 .5rem; color: var(--muted); font-size: .85rem; font-weight: 750; text-align: start; }
+.format-picker select, .observer-select select { min-height: 44px; width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: .6rem; background: var(--card); color: var(--ink); font: inherit; }
+.format-help { font-size: .8rem; color: var(--muted); margin-bottom: 1.2rem; }
+.format-badge { color: var(--muted); font-size: .78rem; margin: .2rem 0 .6rem; }
+.bonus-policy { font-size: .85rem; padding: .6rem 1rem; background: var(--green-soft); border-radius: 12px; }
+.bonus-state { margin-top: .3rem; }.bonus-state.earned,.bonus-state.ahead { color: var(--green); }.bonus-state.behind,.bonus-state.lost { color: #9b5426; }
+
+/* Direct pairing: actual QR stays black/white with a four-module quiet zone. */
+.pair-modal { text-align: center; }.pair-modal h2 { padding-inline: 1.2rem; font-size: clamp(1.35rem,5vw,1.8rem); }.pair-modal .dialog-help { padding: 0; }
+.qr-frame { width: min(100%,360px); margin: 1rem auto; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: white; }
+.qr-frame canvas { display: block; width: 100% !important; height: auto !important; aspect-ratio: 1; }
+.pair-network { font-size: .76rem; color: var(--muted); line-height: 1.4; }
+.pair-status { padding: 1rem; color: var(--green); }.pair-success { font-size: 1.3rem; padding: 1.2rem 0; color: var(--green); font-weight: 800; }
+.scanner-frame { position: relative; aspect-ratio: 1; max-height: 45vh; margin: auto; border-radius: 15px; overflow: hidden; background: #15261f; }
+.scanner-frame video { width: 100%; height: 100%; object-fit: cover; }.scanner-guide { position: absolute; inset: 12%; border: 3px solid white; border-radius: 12px; box-shadow: 0 0 0 70px #0003; pointer-events: none; }
+.scan-message { min-height: 1.2em; font-size: .8rem; color: #9b5426; }
+.observer-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .55rem .8rem; margin-bottom: .6rem; border-radius: 10px; background: var(--green-soft); font-size: .8rem; }
+.observer-status.is-offline { background: var(--gold-soft); color: #654817; }
+.observer-select { display: none; }.toolbar-button { position: relative; }.toolbar-button small { position: absolute; inset: -.2rem -.2rem auto auto; border-radius: 1rem; background: var(--green); color: white; padding: .15rem .35rem; }
+@media (max-width:650px) {
+  .observer-select { display: grid; gap: .3rem; margin: .5rem 0; font-size: .8rem; color: var(--muted); }
+  .observer-shell .score-table-wrap { max-height: calc(100dvh - 275px); }
+  .game-actions { flex-wrap: wrap; }.game-toolbar { gap: .4rem; }
+}
+
+@media (min-width:651px) and (max-width:1100px) {
+  .turn-mobile { display: flex; align-items: baseline; gap: .6rem; margin: .2rem 0 .65rem; color: var(--green-dark); }
+  .turn-mobile small { font-size: .65rem; font-weight: 850; letter-spacing: .12em; }
+  .turn-mobile strong { font-family: Georgia,serif; font-size: 1.3rem; }
+  .game-actions [data-action="add-observer"] { grid-template-columns: auto auto; }
+  .game-actions [data-action="add-observer"] span { display: inline; }
 }

@@ -1,3 +1,4 @@
+import featurePacks from "./locales/v3.js";
 import en from "./locales/en.js";
 import fr from "./locales/fr.js";
 import es from "./locales/es.js";
@@ -63,7 +64,7 @@ export function localeOptions() {
 }
 
 export function t(path, variables = {}) {
-  const value = lookup(PACKS[activeCode], path) ?? lookup(en, path) ?? path;
+  const value = path.startsWith("v3.") ? lookup(featurePacks[activeCode] ?? featurePacks.en, path.slice(3)) ?? lookup(featurePacks.en, path.slice(3)) ?? path : lookup(PACKS[activeCode], path) ?? lookup(en, path) ?? path;
   return interpolate(value, variables);
 }
 

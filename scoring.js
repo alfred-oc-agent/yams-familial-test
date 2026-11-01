@@ -1,4 +1,13 @@
 export const COLUMN_IDS = ["order", "disorder"];
+export const GAME_FORMATS = ["classic", "order", "disorder"];
+export function gameFormat(game) {
+  const format = typeof game === "string" ? game : game?.format;
+  return GAME_FORMATS.includes(format) ? format : "classic";
+}
+export function columnsForFormat(game) {
+  const format = gameFormat(game);
+  return format === "classic" ? COLUMN_IDS : [format];
+}
 
 export const CATEGORIES = [
   { id: "ones", kind: "upper", face: 1 },
@@ -90,14 +99,14 @@ export function isCellPlayable(player, columnId, categoryId) {
   return columnId === "disorder" || nextOrderCategory(cells) === categoryId;
 }
 
-export function playableCells(player) {
+export function playableCells(player, format = "classic") {
   const result = [];
   const orderCategory = nextOrderCategory(player.columns.order);
   if (orderCategory) result.push({ columnId: "order", categoryId: orderCategory });
   for (const category of CATEGORIES) {
     if (!isResolved(player.columns.disorder[category.id])) result.push({ columnId: "disorder", categoryId: category.id });
   }
-  return result;
+  return result.filter(({ columnId }) => columnsForFormat(format).includes(columnId));
 }
 
 export function upperSummary(cells) {
@@ -134,22 +143,49 @@ export function columnSummary(cells) {
   return { upper, lowerTotal, complete, total };
 }
 
-export function playerSummary(player, revealGeneral = false) {
+export function playerSummary(player, revealGeneral = false, format = "classic") {
   const order = columnSummary(player.columns.order);
   const disorder = columnSummary(player.columns.disorder);
-  const complete = order.complete && disorder.complete;
-  return { order, disorder, complete, general: complete && revealGeneral ? order.total + disorder.total : null };
+  const columns = { order, disorder };
+  const ids = columnsForFormat(format);
+  const complete = ids.every((id) => columns[id].complete);
+  return { order, disorder, complete, general: complete && revealGeneral ? ids.reduce((sum, id) => sum + columns[id].total, 0) : null };
 }
 
-export function isGameComplete(players) {
-  return players.length > 0 && players.every((player) => playerSummary(player).complete);
+export function isGameComplete(players, format = "classic") {
+  return players.length > 0 && players.every((player) => playerSummary(player, false, format).complete);
 }
 
-export function finalRanking(players) {
-  if (!isGameComplete(players)) return [];
+export function finalRanking(players, format = "classic") {
+  if (!isGameComplete(players, format)) return [];
   return players
-    .map((player) => ({ ...player, summary: playerSummary(player, true) }))
+    .map((player) => ({ ...player, summary: playerSummary(player, true, format) }))
     .sort((a, b) => b.summary.general - a.summary.general);
+}
+
+// A column's bonus participates only once its fate is settled for EVERY player.
+export function earlyResults(players, format = "classic") {
+  const columns = columnsForFormat(format);
+  const bonusIncluded = Object.fromEntries(columns.map((id) => [id, players.every((player) => upperSummary(player.columns[id]).bonus.status !== "pending")]));
+  let previousScore = null, previousRank = 0;
+  const results = players.map((player) => {
+    const bonuses = {};
+    const scores = {};
+    let turns = 0;
+    for (const id of columns) {
+      const cells = player.columns[id];
+      const upper = upperSummary(cells);
+      bonuses[id] = upper.bonus.status !== "pending" ? upper.bonus.status : upper.trend > 0 ? "ahead" : upper.trend < 0 ? "behind" : "onTrack";
+      scores[id] = CATEGORIES.reduce((sum, category) => sum + numericValue(cells[category.id]), 0) + (bonusIncluded[id] ? upper.bonus.value ?? 0 : 0);
+      turns += CATEGORIES.filter((category) => isResolved(cells[category.id])).length;
+    }
+    return { playerId: player.id, name: player.name, ...scores, general: Object.values(scores).reduce((a, b) => a + b, 0), turns, bonuses };
+  }).sort((a, b) => b.general - a.general).map((result, index) => {
+    const rank = result.general === previousScore ? previousRank : index + 1;
+    previousScore = result.general; previousRank = rank;
+    return { ...result, rank };
+  });
+  return { results, bonusIncluded, unequalTurns: new Set(results.map((result) => result.turns)).size > 1 };
 }
 
 export function appendTimelineEvent(timeline, event) {
@@ -220,8 +256,8 @@ export function scoreRollForCategory(categoryId, dice, cells = emptyColumn()) {
   }
 }
 
-export function analyzeRoll(player, dice) {
-  return playableCells(player)
+export function analyzeRoll(player, dice, format = "classic") {
+  return playableCells(player, format)
     .map(({ columnId, categoryId }) => ({
       columnId,
       categoryId,
