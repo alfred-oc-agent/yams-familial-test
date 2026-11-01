@@ -215,6 +215,12 @@ function selectedSetupPlayer(player) {
   };
 }
 
+function availableSetupProfiles(index) {
+  const selectedIds = new Set(ui.setupPlayers.slice(0, index)
+    .filter((player) => !player.newPlayer).map((player) => player.profileId));
+  return sortProfilesByRecentUse(data.profiles).filter((profile) => !selectedIds.has(profile.id));
+}
+
 function setupPlayerCard(player, index, profiles) {
   const isNew = player.newPlayer;
   return `<fieldset class="player-setup-card single-player-card"><legend><span>${index + 1}</span> ${t("common.player")} ${index + 1}</legend>
@@ -226,8 +232,11 @@ function setupPlayerCard(player, index, profiles) {
 }
 
 function renderPlayersSetup() {
-  const profiles = sortProfilesByRecentUse(data.profiles);
+  const profiles = availableSetupProfiles(ui.setupIndex);
   const player = ui.setupPlayers[ui.setupIndex];
+  // Reconcile this step after an earlier choice changes, without losing new-name drafts.
+  if (!profiles.some((profile) => profile.id === player.profileId)) player.profileId = profiles[0]?.id ?? null;
+  if (!profiles.length) player.newPlayer = true;
   const completed = ui.setupPlayers.slice(0, ui.setupIndex).map(selectedSetupPlayer).filter((item) => item.name.trim());
   return `<main class="centered-page setup-page"><section class="panel narrow"><p class="eyebrow">${t("setup.playerStep")}</p><h1>${t("setup.orderTitle")}</h1><p class="lead">${t("setup.orderHelp")}</p><div class="setup-progress" aria-label="${t("setup.position", { current: ui.setupIndex + 1, total: ui.playerCount })}">${ui.setupPlayers.map((_, index) => `<span class="${index < ui.setupIndex ? "done" : index === ui.setupIndex ? "current" : ""}">${index + 1}</span>`).join("")}</div>${completed.length ? `<p class="entered-players">${completed.map((item, index) => `<span>${index + 1}. ${escapeHtml(item.name)}</span>`).join("")}</p>` : ""}<form id="player-form">${setupPlayerCard(player, ui.setupIndex, profiles)}${ui.error ? `<p class="form-error" role="alert">${escapeHtml(ui.error)}</p>` : ""}<div class="setup-nav">${ui.setupIndex > 0 ? `<button class="button quiet" type="button" data-action="previous-player">← ${t("setup.previous")}</button>` : "<span></span>"}<button class="button primary large" type="submit">${ui.setupIndex === ui.playerCount - 1 ? t("setup.start") : `${t("setup.next")} →`}</button></div></form></section></main>`;
 }
@@ -527,13 +536,13 @@ app.addEventListener("change", async (event) => {
   const newIndex = event.target.dataset.setupNew;
   if (newIndex !== undefined) {
     const player = ui.setupPlayers[Number(newIndex)];
-    player.newPlayer = !data.profiles.length || event.target.checked;
+    player.newPlayer = !availableSetupProfiles(Number(newIndex)).length || event.target.checked;
     ui.error = ""; render();
     requestAnimationFrame(() => document.querySelector(player.newPlayer ? "[data-setup-name]" : "[data-setup-profile]")?.focus());
   } else if (profileIndex !== undefined) {
     const player = ui.setupPlayers[Number(profileIndex)];
     if (player.newPlayer) return;
-    const profile = data.profiles.find((item) => item.id === event.target.value);
+    const profile = availableSetupProfiles(Number(profileIndex)).find((item) => item.id === event.target.value);
     if (profile) player.profileId = profile.id;
     ui.error = ""; render();
   } else if (rememberIndex !== undefined) {
