@@ -203,6 +203,7 @@ html[dir="rtl"] .score-table tr > *:last-child { border-left: 0; }
 
 /* Direct pairing: actual QR stays black/white with a four-module quiet zone. */
 .pair-modal { text-align: center; }.pair-modal h2 { padding-inline: 1.2rem; font-size: clamp(1.35rem,5vw,1.8rem); }.pair-modal .dialog-help { padding: 0; }
+.pair-version { white-space: nowrap; color: var(--muted); font-size: .55em; }
 .qr-frame { width: min(100%,360px); margin: 1rem auto; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: white; }
 .qr-frame canvas { display: block; width: 100% !important; height: auto !important; aspect-ratio: 1; image-rendering: pixelated; }
 .modal-backdrop:has(.pair-modal.qr-expanded) { padding: 0; place-items: center; }

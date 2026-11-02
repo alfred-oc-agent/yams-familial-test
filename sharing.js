@@ -3,6 +3,7 @@ import { CATEGORIES, GAME_FORMATS, columnsForFormat, gameFormat, emptyPlayer, is
 const SIGNAL_TTL = 5 * 60_000;
 const MAX_MESSAGE = 64_000;
 const MAX_SIGNAL = 16_000;
+export const PAIRING_BUILD = 10;
 
 // Explicit allowlist: profile IDs, local settings and historical statistics never leave the manager.
 export function sharedGame(game) {
@@ -98,6 +99,42 @@ export function summarizeCandidates(sdp = '') {
   return result;
 }
 
+// RTCStats contains addresses, certificates and stable IDs. Copy only fixed counters.
+export function summarizeConnectivityStats(report) {
+  const candidates=()=>({total:0,udp:0,tcp:0,host:0,srflx:0,prflx:0,relay:0,mdns:0,ipv4:0,ipv6:0,unknownAddress:0});
+  const local=candidates(),remote=candidates();
+  const pairs={total:0,frozen:0,waiting:0,inProgress:0,succeeded:0,failed:0,other:0,nominated:0,selected:0};
+  const checks={requestsSent:null,responsesReceived:null,requestsReceived:null,responsesSent:null};
+  const counterCoverage={requestsSent:0,responsesReceived:0,requestsReceived:0,responsesSent:0};
+  const entries=[...report.values()],selectedIds=new Set(),dtlsStates=new Set();
+  for(const entry of entries)if(entry?.type==='transport') {
+    if(entry.selectedCandidatePairId)selectedIds.add(entry.selectedCandidatePairId);
+    if(['new','connecting','connected','closed','failed'].includes(entry.dtlsState))dtlsStates.add(entry.dtlsState);
+  }
+  for(const entry of entries) {
+    if(entry?.type==='local-candidate'||entry?.type==='remote-candidate') {
+      const target=entry.type==='local-candidate'?local:remote;target.total++;
+      const protocol=entry.protocol?.toLowerCase();if(protocol==='udp'||protocol==='tcp')target[protocol]++;
+      if(['host','srflx','prflx','relay'].includes(entry.candidateType))target[entry.candidateType]++;
+      const address=entry.address??entry.ip??'';
+      if(typeof address==='string' && address.endsWith('.local'))target.mdns++;
+      else if(typeof address==='string' && address.includes(':'))target.ipv6++;
+      else if(typeof address==='string' && /^\d+\.\d+\.\d+\.\d+$/.test(address))target.ipv4++;
+      else target.unknownAddress++;
+    } else if(entry?.type==='candidate-pair') {
+      pairs.total++;
+      const state=entry.state==='in-progress'?'inProgress':['frozen','waiting','succeeded','failed'].includes(entry.state)?entry.state:'other';
+      pairs[state]++;
+      if(entry.nominated===true)pairs.nominated++;
+      if(entry.selected===true||selectedIds.has(entry.id))pairs.selected++;
+      for(const key of Object.keys(checks))if(Number.isSafeInteger(entry[key]) && entry[key]>=0) {
+        checks[key]=Math.min(Number.MAX_SAFE_INTEGER,(checks[key]??0)+entry[key]);counterCoverage[key]++;
+      }
+    }
+  }
+  return {local,remote,pairs,checks,counterCoverage,dtlsStates:[...dtlsStates].sort()};
+}
+
 export function createPeer(role, callbacks = {}) {
   if(!globalThis.RTCPeerConnection) throw Error('unsupported');
   // No default public STUN, TURN or signalling service, including in dependencies.
@@ -106,8 +143,23 @@ export function createPeer(role, callbacks = {}) {
   let closed=false, live=false, lastSeen=Date.now(), heartbeat=null, ready=false;
   let serial=0, acknowledged=0, finishing=null, connectingDeadline=null;
   let failure=null; const transitions=[]; const created=Date.now();
+  let connectivity={available:false,reason:'pending'},statsBusy=false;
+  const statsTimer=setInterval(refreshConnectivity,1000);
+  queueMicrotask(refreshConnectivity);
   const deadline=setTimeout(()=>{if(!ready)fail('pairError');},SIGNAL_TTL);
-  function diagnostics() {return {version:9,role,ready,failure,signaling:pc.signalingState,ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,channel:channel?.readyState??'none',local:summarizeCandidates(pc.localDescription?.sdp),remote:summarizeCandidates(pc.remoteDescription?.sdp),transitions:[...transitions]};}
+  function diagnostics() {return {version:PAIRING_BUILD,role,ready,failure,signaling:pc.signalingState,ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,channel:channel?.readyState??'none',local:summarizeCandidates(pc.localDescription?.sdp),remote:summarizeCandidates(pc.remoteDescription?.sdp),connectivity,transitions:[...transitions]};}
+  async function refreshConnectivity() {
+    if(closed||ready||statsBusy)return;
+    if(typeof pc.getStats!=='function') {connectivity={available:false,reason:'unsupported'};clearInterval(statsTimer);callbacks.onDiagnostics?.(diagnostics());return;}
+    statsBusy=true;
+    try {
+      const stats=await pc.getStats();
+      if(closed||ready)return;
+      connectivity={available:true,sampledAtMs:Date.now()-created,...summarizeConnectivityStats(stats)};
+      callbacks.onDiagnostics?.(diagnostics());
+    } catch {if(!closed&&!ready){connectivity={available:false,reason:'unavailable'};callbacks.onDiagnostics?.(diagnostics());}}
+    finally {statsBusy=false;}
+  }
   function report(event) {
     if(closed)return;
     transitions.push({ms:Date.now()-created,event,ice:pc.iceConnectionState,connection:pc.connectionState,channel:channel?.readyState??'none'});
@@ -115,7 +167,7 @@ export function createPeer(role, callbacks = {}) {
     callbacks.onDiagnostics?.(diagnostics());
   }
   function fail(code) {if(closed||ready)return;failure=code;report('failure');callbacks.onError?.(code);close();}
-  function markReady() {ready=true;clearTimeout(deadline);clearTimeout(connectingDeadline);report('ready');}
+  function markReady() {ready=true;clearTimeout(deadline);clearTimeout(connectingDeadline);clearInterval(statsTimer);report('ready');}
   const status=(value)=>{if(value!==live){live=value;callbacks.onStatus?.(value);}};
   function send(message) {
     if(channel?.readyState!=='open') return false;
@@ -175,7 +227,7 @@ export function createPeer(role, callbacks = {}) {
   pc.addEventListener('iceconnectionstatechange',()=>{report('ice');if(pc.iceConnectionState==='failed')fail('connectionFailed');});
   pc.addEventListener('icegatheringstatechange',()=>report('gathering'));
   pc.addEventListener('signalingstatechange',()=>report('signaling'));
-  function close() {if(closed)return;closed=true;clearTimeout(deadline);clearTimeout(connectingDeadline);clearInterval(heartbeat);clearTimeout(finishing);channel?.close();pc.close();status(false);}
+  function close() {if(closed)return;closed=true;clearTimeout(deadline);clearTimeout(connectingDeadline);clearInterval(statsTimer);clearInterval(heartbeat);clearTimeout(finishing);channel?.close();pc.close();status(false);}
   return {
     get live(){return live;}, get ready(){return ready;}, get closed(){return closed;},
     diagnostics,

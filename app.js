@@ -15,7 +15,7 @@ import {
   setLocale, t, tp,
 } from "./i18n.js";
 
-import { createPeer, decodeSignal } from "./sharing.js";
+import { createPeer, decodeSignal, PAIRING_BUILD } from "./sharing.js";
 import { drawQR, scanQR } from "./qr-camera.js";
 import { createWakeLock } from "./wake-lock.js";
 
@@ -712,8 +712,8 @@ function pairingModal() {
   } else if(pair.step==='error') {
     body=`<p class="constraint-warning" role="alert">${t('v3.'+pair.error)}</p><button class="button primary full" data-action="pair-retry">${t('v3.retry')}</button>`;
   } else body=`<p class="pair-status" role="status">${t(pair.step==='preparing'?'v3.preparing':'v3.connecting')}</p>`;
-  const diagnostics=pair.diagnostics && !pair.step.startsWith('scan-') && pair.step!=='added' ? `<details class="pair-diagnostics"><summary>${t('v3.diagDetails')}</summary><p>${t('v3.diagHelp')}</p><pre data-pair-diagnostics tabindex="0">${escapeHtml(JSON.stringify(pair.diagnostics,null,2))}</pre><button class="button quiet" data-action="pair-copy">${t('v3.copyDiagnostic')}</button></details>` : '';
-  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}</h2>${body}${diagnostics}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
+  const diagnostics=pair.diagnostics && !pair.step.startsWith('scan-') && pair.step!=='added' ? `<details class="pair-diagnostics" ${['connecting','error'].includes(pair.step)?'open':''}><summary>${t('v3.diagDetails')}</summary><button class="button quiet" data-action="pair-copy">${t('v3.copyDiagnostic')}</button><p>${t('v3.diagHelp')}</p><pre data-pair-diagnostics tabindex="0">${escapeHtml(JSON.stringify(pair.diagnostics,null,2))}</pre></details>` : '';
+  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')} <small class="pair-version">v${PAIRING_BUILD}</small></h2>${body}${diagnostics}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
 }
 
 function renderPairingMedia() {
