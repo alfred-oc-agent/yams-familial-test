@@ -494,6 +494,11 @@ app.addEventListener("click", async (event) => {
   else if (action === "join-game") beginJoining();
   else if (action === "rejoin-game") { leaveSharing(); ui.screen = "home"; beginJoining(); }
   else if (action === "pair-next") { ui.pairing.step = "scan-answer"; ui.pairing.error = ""; render(); }
+  else if (action === "pair-zoom") { ui.pairing.expanded = !ui.pairing.expanded; render(); }
+  else if (action === "pair-copy") {
+    try {await navigator.clipboard.writeText(JSON.stringify(ui.pairing.diagnostics,null,2));button.textContent=t('v3.copied');}
+    catch {const block=document.querySelector('[data-pair-diagnostics]');if(block){const range=document.createRange();range.selectNodeContents(block);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}}
+  }
   else if (action === "pair-retry") { const manager = ui.pairing?.role === "manager"; cancelPairing(); if (manager) await beginAdding(); else beginJoining(); }
   else if (action === "observer-options") openModal({ type: "observer-options" });
   else if (action === "game-options") openModal({ type: "options" });
@@ -591,8 +596,16 @@ function leaveSharing() {
 
 function pairError(pair, code) {
   if (ui.pairing !== pair) return;
-  pair.step = 'error'; pair.error = code === 'unsupported' ? code : 'pairError';
+  pair.step = 'error'; pair.error = ['unsupported','connectionFailed'].includes(code) ? code : 'pairError';
+  if(!pair.peer?.ready)pair.peer?.close();
   render();
+}
+
+function updatePairDiagnostics(pair, details) {
+  if(ui.pairing!==pair)return;
+  pair.diagnostics=details;
+  const block=document.querySelector('[data-pair-diagnostics]');
+  if(block)block.textContent=JSON.stringify(details,null,2);
 }
 
 async function beginAdding() {
@@ -608,6 +621,7 @@ async function beginAdding() {
       onStatus: () => { if (ui.screen === 'game' && ui.modal?.type !== 'share') render(); },
       onLeave: () => { managerPeers.delete(peer); if(ui.screen==='game' && ui.modal?.type !== 'share')render(); },
       onError: code => pairError(pair,code),
+      onDiagnostics: details => updatePairDiagnostics(pair,details),
     });
     pair.peer = peer; managerPeers.add(peer);
     const qr = await peer.offer();
@@ -675,6 +689,7 @@ async function handlePairingCode(text, pair) {
           if(ui.observation?.game.status==='active') {ui.banner=t('v3.sharedEnded');returnHome();}
         },
         onError:code=>pairError(pair,code),
+        onDiagnostics:details=>updatePairDiagnostics(pair,details),
       });
       pair.peer=peer;observerPeer=peer;
       const qr=await peer.answer(text);
@@ -689,7 +704,7 @@ function pairingModal() {
   if(!pair)return '';
   let body='';
   if(pair.step==='offer' || pair.step==='answer') {
-    body=`<p class="dialog-help">${t(pair.step==='offer'?'v3.offerHelp':'v3.answerHelp')}</p><div class="qr-frame"><canvas data-pair-qr role="img" aria-label="QR code"></canvas></div>${pair.step==='offer' ? `<p class="dialog-help">${t('v3.nextHelp')}</p><button class="button primary full" data-action="pair-next">${t('v3.next')}</button>` : `<p class="pair-status" role="status">${t('v3.waiting')}</p>`}`;
+    body=`<p class="dialog-help">${t(pair.step==='offer'?'v3.offerHelp':'v3.answerHelp')}</p><div class="qr-frame"><canvas data-pair-qr role="img" aria-label="QR code"></canvas></div><button class="button quiet" data-action="pair-zoom" aria-pressed="${!!pair.expanded}">${t(pair.expanded?'v3.reduceQR':'v3.expandQR')}</button>${pair.step==='offer' ? `<p class="dialog-help">${t('v3.nextHelp')}</p><button class="button primary full" data-action="pair-next">${t('v3.next')}</button>` : `<p class="pair-status" role="status">${t('v3.waiting')}</p>`}`;
   } else if(pair.step.startsWith('scan-')) {
     body=`<h3>${t(pair.step==='scan-offer'?'v3.scanOffer':'v3.scanAnswer')}</h3><p class="dialog-help">${t('v3.scanHelp')}</p><div class="scanner-frame"><video data-qr-video autoplay playsinline muted></video><div class="scanner-guide" aria-hidden="true"></div></div><p class="scan-message" data-scan-message role="status"></p>`;
   } else if(pair.step==='added') {
@@ -697,7 +712,8 @@ function pairingModal() {
   } else if(pair.step==='error') {
     body=`<p class="constraint-warning" role="alert">${t('v3.'+pair.error)}</p><button class="button primary full" data-action="pair-retry">${t('v3.retry')}</button>`;
   } else body=`<p class="pair-status" role="status">${t(pair.step==='preparing'?'v3.preparing':'v3.connecting')}</p>`;
-  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}</h2>${body}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),'pair-modal');
+  const diagnostics=pair.diagnostics && !pair.step.startsWith('scan-') && pair.step!=='added' ? `<details class="pair-diagnostics"><summary>${t('v3.diagDetails')}</summary><p>${t('v3.diagHelp')}</p><pre data-pair-diagnostics tabindex="0">${escapeHtml(JSON.stringify(pair.diagnostics,null,2))}</pre><button class="button quiet" data-action="pair-copy">${t('v3.copyDiagnostic')}</button></details>` : '';
+  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}</h2>${body}${diagnostics}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
 }
 
 function renderPairingMedia() {

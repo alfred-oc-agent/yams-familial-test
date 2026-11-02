@@ -83,14 +83,39 @@ function gatherIce(pc) {
   });
 }
 
+// Counts only: never put IPs, SDP, session secrets or player data in a diagnostic.
+export function summarizeCandidates(sdp = '') {
+  const result = {total:0, udp:0, tcp:0, mdns:0, ipv4:0, ipv6:0};
+  for (const line of sdp.split(/\r?\n/)) {
+    if (!line.startsWith('a=candidate:')) continue;
+    const fields=line.split(/\s+/), address=fields[4] ?? '';
+    result.total++;
+    const protocol=fields[2]?.toLowerCase(); if(protocol==='udp'||protocol==='tcp')result[protocol]++;
+    if(address.endsWith('.local'))result.mdns++;
+    else if(address.includes(':'))result.ipv6++;
+    else if(/^\d+\.\d+\.\d+\.\d+$/.test(address))result.ipv4++;
+  }
+  return result;
+}
+
 export function createPeer(role, callbacks = {}) {
   if(!globalThis.RTCPeerConnection) throw Error('unsupported');
   // No default public STUN, TURN or signalling service, including in dependencies.
   const pc=new RTCPeerConnection({iceServers:[],iceCandidatePoolSize:0,bundlePolicy:'max-bundle'});
   let channel, session=crypto.randomUUID(), expires=Date.now()+SIGNAL_TTL;
   let closed=false, live=false, lastSeen=Date.now(), heartbeat=null, ready=false;
-  let serial=0, acknowledged=0, finishing=null;
-  const deadline=setTimeout(()=>{if(!ready){callbacks.onError?.('pairError');close();}},SIGNAL_TTL);
+  let serial=0, acknowledged=0, finishing=null, connectingDeadline=null;
+  let failure=null; const transitions=[]; const created=Date.now();
+  const deadline=setTimeout(()=>{if(!ready)fail('pairError');},SIGNAL_TTL);
+  function diagnostics() {return {version:9,role,ready,failure,signaling:pc.signalingState,ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,channel:channel?.readyState??'none',local:summarizeCandidates(pc.localDescription?.sdp),remote:summarizeCandidates(pc.remoteDescription?.sdp),transitions:[...transitions]};}
+  function report(event) {
+    if(closed)return;
+    transitions.push({ms:Date.now()-created,event,ice:pc.iceConnectionState,connection:pc.connectionState,channel:channel?.readyState??'none'});
+    if(transitions.length>16)transitions.shift();
+    callbacks.onDiagnostics?.(diagnostics());
+  }
+  function fail(code) {if(closed||ready)return;failure=code;report('failure');callbacks.onError?.(code);close();}
+  function markReady() {ready=true;clearTimeout(deadline);clearTimeout(connectingDeadline);report('ready');}
   const status=(value)=>{if(value!==live){live=value;callbacks.onStatus?.(value);}};
   function send(message) {
     if(channel?.readyState!=='open') return false;
@@ -110,7 +135,7 @@ export function createPeer(role, callbacks = {}) {
     if(message.type==='ping') {send({type:'pong'});if(!wasLive){if(role==='manager')publish();else if(ready)send({type:'sync'});}return;}
     if(message.type==='pong') {if(!wasLive){if(role==='manager')publish();else if(ready)send({type:'sync'});}return;}
     if(role==='manager') {
-      if(message.type==='ready') {if(Number.isInteger(message.serial))acknowledged=Math.max(acknowledged,Math.min(message.serial,serial));if(!ready){ready=true;clearTimeout(deadline);status(true);callbacks.onReady?.();}}
+      if(message.type==='ready') {if(Number.isInteger(message.serial))acknowledged=Math.max(acknowledged,Math.min(message.serial,serial));if(!ready){markReady();status(true);callbacks.onReady?.();}}
       else if(message.type==='sync') publish();
       else if(message.type==='leave') {callbacks.onLeave?.();close();}
       // Observers never get an operation capable of mutating the manager's game.
@@ -118,7 +143,7 @@ export function createPeer(role, callbacks = {}) {
     }
     if(message.type==='state') {
       let game;try{game=validateSharedGame(message.game);}catch{return;}
-      ready=true;clearTimeout(deadline);status(true);
+      if(!ready)markReady();status(true);
       callbacks.onState?.(game, typeof message.noticeId==='string' && message.noticeId.length<100 ? message.noticeId : null);
       send({type:'ready',serial:message.serial});
     } else if(message.type==='exit') {callbacks.onExit?.();close();}
@@ -126,28 +151,38 @@ export function createPeer(role, callbacks = {}) {
   function attach(dc) {
     channel=dc;
     channel.onmessage=receive;
+    let opened=false;
     channel.onopen=()=>{
-      if(closed)return;
+      if(closed||opened)return;opened=true;
       lastSeen=Date.now();
-      if(role==='manager')publish();
+      report('channel-open');
+      if(role==='manager')publish();else send({type:'sync'});
       heartbeat=setInterval(()=>{if(Date.now()-lastSeen>15_000)status(false);send({type:'ping'});},3000);
     };
-    channel.onclose=()=>{status(false);clearInterval(heartbeat);};
-    channel.onerror=()=>status(false);
+    channel.onclose=()=>{report('channel-closed');status(false);clearInterval(heartbeat);if(!ready)fail('connectionFailed');};
+    channel.onerror=()=>{report('channel-error');status(false);if(!ready)fail('connectionFailed');};
+    // Some engines deliver the incoming datachannel already open.
+    if(channel.readyState==='open')channel.onopen();
   }
   if(role==='manager') attach(pc.createDataChannel('yams-observation',{ordered:true}));
   else pc.ondatachannel=event=>attach(event.channel);
   pc.onconnectionstatechange=()=>{
+    report('connection');
     if(['disconnected','failed','closed'].includes(pc.connectionState))status(false);
+    if(pc.connectionState==='failed')fail('connectionFailed');
     if(pc.connectionState==='connected' && ready){send({type:'ping'});if(role==='manager')publish();}
   };
-  function close() {if(closed)return;closed=true;clearTimeout(deadline);clearInterval(heartbeat);clearTimeout(finishing);channel?.close();pc.close();status(false);}
+  pc.addEventListener('iceconnectionstatechange',()=>{report('ice');if(pc.iceConnectionState==='failed')fail('connectionFailed');});
+  pc.addEventListener('icegatheringstatechange',()=>report('gathering'));
+  pc.addEventListener('signalingstatechange',()=>report('signaling'));
+  function close() {if(closed)return;closed=true;clearTimeout(deadline);clearTimeout(connectingDeadline);clearInterval(heartbeat);clearTimeout(finishing);channel?.close();pc.close();status(false);}
   return {
     get live(){return live;}, get ready(){return ready;}, get closed(){return closed;},
+    diagnostics,
     async offer(){await pc.setLocalDescription(await pc.createOffer());await gatherIce(pc);return encodeSignal({type:'offer',session,expires,sdp:pc.localDescription.sdp});},
     async answer(text){const offer=await decodeSignal(text,'offer');session=offer.session;expires=offer.expires;await pc.setRemoteDescription({type:'offer',sdp:offer.sdp});await pc.setLocalDescription(await pc.createAnswer());await gatherIce(pc);return encodeSignal({type:'answer',session,expires,sdp:pc.localDescription.sdp});},
     validateAnswer(text){return decodeSignal(text,'answer',session);},
-    async acceptAnswer(text){const answer=await decodeSignal(text,'answer',session);await pc.setRemoteDescription({type:'answer',sdp:answer.sdp});},
+    async acceptAnswer(text){const answer=await decodeSignal(text,'answer',session);await pc.setRemoteDescription({type:'answer',sdp:answer.sdp});report('answer-accepted');if(!ready&&!closed)connectingDeadline=setTimeout(()=>fail('connectionFailed'),45_000);},
     publish, close,
     finish(){
       const until=Date.now()+2000;
