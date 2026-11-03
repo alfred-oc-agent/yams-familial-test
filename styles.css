@@ -213,6 +213,11 @@ html[dir="rtl"] .score-table tr > *:last-child { border-left: 0; }
 .pair-diagnostics { margin: .8rem 0; text-align: start; font-size: .78rem; color: var(--muted); }
 .pair-diagnostics summary { cursor: pointer; padding: .6rem 0; }
 .pair-diagnostics pre { max-height: 15rem; overflow: auto; padding: .7rem; background: var(--green-soft); border-radius: 8px; font-size: .68rem; direction: ltr; text-align: left; }
+.test-footer { text-align: center; color: var(--muted); font-size: .8rem; max-width: 34rem; width: 100%; margin-top: 1rem; }
+.test-footer > p { margin: 0; }
+.last-diagnostic { margin: .9rem 0; font-size: .8rem; color: var(--muted); text-align: start; }
+.last-diagnostic summary { cursor: pointer; padding: .6rem 0; }
+.debug-send-status { overflow-wrap: anywhere; }
 .pair-network { font-size: .76rem; color: var(--muted); line-height: 1.4; }
 .pair-status { padding: 1rem; color: var(--green); }.pair-success { font-size: 1.3rem; padding: 1.2rem 0; color: var(--green); font-weight: 800; }
 .scanner-frame { position: relative; aspect-ratio: 1; max-height: 45vh; margin: auto; border-radius: 15px; overflow: hidden; background: #15261f; }

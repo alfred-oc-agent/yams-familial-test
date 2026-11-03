@@ -16,6 +16,7 @@ import {
 } from "./i18n.js";
 
 import { createPeer, decodeSignal, PAIRING_BUILD } from "./sharing.js";
+import { BUILD_NUMBER, DIAGNOSTICS_ENABLED } from "./build-profile.js";
 import { drawQR, scanQR } from "./qr-camera.js";
 import { createWakeLock } from "./wake-lock.js";
 
@@ -35,8 +36,9 @@ const ui = {
   screen: "home", playerCount: 4, setupPlayers: [], setupIndex: 0,
   modal: null, dice: [1, 1, 1, 1, 1], completed: null,
   error: "", tagline: "", turnNotice: null, format: "classic", statsFormat: "classic",
-  observation: null, pairing: null, banner: "",
+  observation: null, pairing: null, banner: "", lastDiagnostic: null,
 };
+let diagnosticUpload = { status: 'idle', key: null, reportId: null };
 
 function id(prefix) {
   return `${prefix}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
@@ -198,7 +200,7 @@ function renderHome() {
     <p class="eyebrow">${t("home.eyebrow")}</p><h1>Yam’s</h1><p class="lead">${escapeHtml(ui.tagline)}</p>
     <div class="home-actions">${ui.banner ? `<p class="constraint-warning" role="status">${escapeHtml(ui.banner)}</p>` : ""}${data.activeGame ? `<button class="button primary large" data-action="resume">${t("home.resume")}</button>` : ""}<button class="button ${data.activeGame ? "secondary" : "primary"} large" data-action="new-game">${t("home.newGame")}</button><button class="button secondary large" data-action="join-game">${t("v3.join")}</button><div class="action-pair"><button class="button quiet" data-action="rules">${t("home.readRules")}</button><button class="button quiet" data-action="stats">${t("home.statistics")}</button></div>${languagePicker()}</div>
     ${data.activeGame ? `<p class="saved-note">${t("home.saved", { players: data.activeGame.basePlayers.length, scores: data.activeGame.timeline.cursor })}</p>` : `<p class="saved-note">${t("home.offline")}</p>`}
-  </section></main>`;
+  </section>${DIAGNOSTICS_ENABLED ? `<footer class="test-footer"><p>${t('v3.testVersion',{version:BUILD_NUMBER})}</p><div data-debug-last>${lastDiagnosticControls()}</div></footer>` : ''}</main>`;
 }
 
 function renderCountSetup() {
@@ -363,8 +365,8 @@ function dialogFrame(content, label, className = "") {
 function renderModal() {
   if (!ui.modal) return "";
   if (ui.modal.type === "share") return pairingModal();
-  if (ui.modal.type === "observer-options") return dialogFrame(`<h2>${t("v3.options")}</h2><label class="check-label"><input type="checkbox" data-keep-awake ${data.settings.keepAwake ? "checked" : ""}/> ${t("v3.keepAwake")}</label><p class="dialog-help">${t("v3.wakeHelp")}</p><button class="button quiet full" data-action="quit-game">${t("v3.leave")}</button>`, t("v3.options"));
-  if (ui.modal.type === "options") return dialogFrame(`<h2>${t("v3.options")}</h2><label class="check-label"><input type="checkbox" data-keep-awake ${data.settings.keepAwake ? "checked" : ""}/> ${t("v3.keepAwake")}</label><p class="dialog-help">${t("v3.wakeHelp")}</p><div class="dialog-actions"><button class="button danger-outline" data-action="finish-early">${t("v3.finish")}</button></div>`, t("v3.options"));
+  if (ui.modal.type === "observer-options") return dialogFrame(`<h2>${t("v3.options")}</h2><label class="check-label"><input type="checkbox" data-keep-awake ${data.settings.keepAwake ? "checked" : ""}/> ${t("v3.keepAwake")}</label><p class="dialog-help">${t("v3.wakeHelp")}</p>${lastDiagnosticControls()}<button class="button quiet full" data-action="quit-game">${t("v3.leave")}</button>`, t("v3.options"));
+  if (ui.modal.type === "options") return dialogFrame(`<h2>${t("v3.options")}</h2><label class="check-label"><input type="checkbox" data-keep-awake ${data.settings.keepAwake ? "checked" : ""}/> ${t("v3.keepAwake")}</label><p class="dialog-help">${t("v3.wakeHelp")}</p>${lastDiagnosticControls()}<div class="dialog-actions"><button class="button danger-outline" data-action="finish-early">${t("v3.finish")}</button></div>`, t("v3.options"));
   if (ui.modal.type === "finish") return dialogFrame(`<h2>${t("v3.finishQuestion")}</h2><p class="dialog-help">${t("v3.finishHelp")}</p><div class="dialog-actions"><button class="button quiet" data-action="close-modal">${t("common.cancel")}</button><button class="button danger" data-action="confirm-finish">${t("v3.finish")}</button></div>`, t("v3.finish"));
   if (ui.modal.type === "score") return scoreModal(ui.modal);
   if (ui.modal.type === "roll") return rollHelperModal();
@@ -495,7 +497,8 @@ app.addEventListener("click", async (event) => {
   else if (action === "rejoin-game") { leaveSharing(); ui.screen = "home"; beginJoining(); }
   else if (action === "pair-next") { ui.pairing.step = "scan-answer"; ui.pairing.error = ""; render(); }
   else if (action === "pair-zoom") { ui.pairing.expanded = !ui.pairing.expanded; render(); }
-  else if (action === "pair-copy") {
+  else if (action === "debug-send" && DIAGNOSTICS_ENABLED) await uploadDiagnostic();
+  else if (action === "pair-copy" && DIAGNOSTICS_ENABLED) {
     try {await navigator.clipboard.writeText(JSON.stringify(ui.pairing.diagnostics,null,2));button.textContent=t('v3.copied');}
     catch {const block=document.querySelector('[data-pair-diagnostics]');if(block){const range=document.createRange();range.selectNodeContents(block);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}}
   }
@@ -602,10 +605,39 @@ function pairError(pair, code) {
 }
 
 function updatePairDiagnostics(pair, details) {
-  if(ui.pairing!==pair)return;
+  if(!DIAGNOSTICS_ENABLED || ui.pairing!==pair)return;
   pair.diagnostics=details;
+  ui.lastDiagnostic=details;
   const block=document.querySelector('[data-pair-diagnostics]');
   if(block)block.textContent=JSON.stringify(details,null,2);
+}
+
+function diagnosticKey(details) { return `${details?.attemptId ?? 'pending'}:${details?.role ?? ''}:${details?.failure ?? ''}:${!!details?.ready}`; }
+
+function diagnosticUploadControls() {
+  if(!DIAGNOSTICS_ENABLED || !ui.lastDiagnostic)return '';
+  const status=diagnosticUpload.key===diagnosticKey(ui.lastDiagnostic) ? diagnosticUpload.status : 'idle';
+  return `<button class="button quiet" data-action="debug-send" ${diagnosticUpload.status==='sending'?'disabled':''}>${t(status==='sending'?'v3.sendingDiagnostic':'v3.sendDiagnostic')}</button><p class="debug-send-status" role="status">${status==='sent'?escapeHtml(t('v3.diagnosticSent',{id:diagnosticUpload.reportId.slice(0,8)})):status==='error'?t('v3.diagnosticSendError'):''}</p>`;
+}
+
+function lastDiagnosticControls() {
+  return DIAGNOSTICS_ENABLED && ui.lastDiagnostic ? `<details class="last-diagnostic"><summary>${t('v3.lastDiagnostic')}</summary><p>${t('v3.sendDiagnosticHelp')}</p><div data-debug-upload-controls>${diagnosticUploadControls()}</div></details>` : '';
+}
+
+async function uploadDiagnostic() {
+  if(!DIAGNOSTICS_ENABLED || !ui.lastDiagnostic || diagnosticUpload.status==='sending')return;
+  const details=ui.lastDiagnostic,key=diagnosticKey(details);
+  // A retry of an ambiguous timeout reuses its public report ID for deduplication.
+  const reportId=diagnosticUpload.key===key && diagnosticUpload.status==='error' ? diagnosticUpload.reportId : crypto.randomUUID();
+  diagnosticUpload={status:'sending',key,reportId};
+  const update=()=>document.querySelectorAll('[data-debug-upload-controls]').forEach(block=>{block.innerHTML=diagnosticUploadControls();});
+  update();
+  try {
+    const {sendDiagnostic}=await import('./debug-reporting.js');
+    await sendDiagnostic(details,{reportId});
+    diagnosticUpload={status:'sent',key,reportId};
+  } catch {diagnosticUpload={status:'error',key,reportId};}
+  update(); // Never rerender the camera, QR or game when an upload settles.
 }
 
 async function beginAdding() {
@@ -712,8 +744,8 @@ function pairingModal() {
   } else if(pair.step==='error') {
     body=`<p class="constraint-warning" role="alert">${t('v3.'+pair.error)}</p><button class="button primary full" data-action="pair-retry">${t('v3.retry')}</button>`;
   } else body=`<p class="pair-status" role="status">${t(pair.step==='preparing'?'v3.preparing':'v3.connecting')}</p>`;
-  const diagnostics=pair.diagnostics && !pair.step.startsWith('scan-') && pair.step!=='added' ? `<details class="pair-diagnostics" ${['connecting','error'].includes(pair.step)?'open':''}><summary>${t('v3.diagDetails')}</summary><button class="button quiet" data-action="pair-copy">${t('v3.copyDiagnostic')}</button><p>${t('v3.diagHelp')}</p><pre data-pair-diagnostics tabindex="0">${escapeHtml(JSON.stringify(pair.diagnostics,null,2))}</pre></details>` : '';
-  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')} <small class="pair-version">v${PAIRING_BUILD}</small></h2>${body}${diagnostics}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
+  const diagnostics=DIAGNOSTICS_ENABLED && pair.diagnostics && !pair.step.startsWith('scan-') ? `<details class="pair-diagnostics" ${['connecting','error'].includes(pair.step)?'open':''}><summary>${t('v3.diagDetails')}</summary><button class="button quiet" data-action="pair-copy">${t('v3.copyDiagnostic')}</button><p>${t('v3.diagHelp')}</p><pre data-pair-diagnostics tabindex="0">${escapeHtml(JSON.stringify(pair.diagnostics,null,2))}</pre><p>${t('v3.sendDiagnosticHelp')}</p><div data-debug-upload-controls>${diagnosticUploadControls()}</div></details>` : '';
+  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}${DIAGNOSTICS_ENABLED ? ` <small class="pair-version">v${PAIRING_BUILD}</small>` : ''}</h2>${body}${diagnostics}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
 }
 
 function renderPairingMedia() {

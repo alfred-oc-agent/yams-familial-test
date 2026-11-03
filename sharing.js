@@ -1,9 +1,10 @@
 import { CATEGORIES, GAME_FORMATS, columnsForFormat, gameFormat, emptyPlayer, isCellPlayable, validateScore, isGameComplete } from './scoring.js';
+import { BUILD_NUMBER, DIAGNOSTICS_ENABLED } from './build-profile.js';
 
 const SIGNAL_TTL = 5 * 60_000;
 const MAX_MESSAGE = 64_000;
 const MAX_SIGNAL = 16_000;
-export const PAIRING_BUILD = 10;
+export const PAIRING_BUILD = BUILD_NUMBER;
 
 // Explicit allowlist: profile IDs, local settings and historical statistics never leave the manager.
 export function sharedGame(game) {
@@ -135,21 +136,31 @@ export function summarizeConnectivityStats(report) {
   return {local,remote,pairs,checks,counterCoverage,dtlsStates:[...dtlsStates].sort()};
 }
 
-export function createPeer(role, callbacks = {}) {
+export function createPeer(role, callbacks = {}, { diagnostics: debug = DIAGNOSTICS_ENABLED } = {}) {
   if(!globalThis.RTCPeerConnection) throw Error('unsupported');
   // No default public STUN, TURN or signalling service, including in dependencies.
   const pc=new RTCPeerConnection({iceServers:[],iceCandidatePoolSize:0,bundlePolicy:'max-bundle'});
   let channel, session=crypto.randomUUID(), expires=Date.now()+SIGNAL_TTL;
   let closed=false, live=false, lastSeen=Date.now(), heartbeat=null, ready=false;
   let serial=0, acknowledged=0, finishing=null, connectingDeadline=null;
-  let failure=null; const transitions=[]; const created=Date.now();
+  let failure=null,attemptId=null; const transitions=[]; const created=Date.now();
   let connectivity={available:false,reason:'pending'},statsBusy=false;
-  const statsTimer=setInterval(refreshConnectivity,1000);
-  queueMicrotask(refreshConnectivity);
+  const statsTimer=debug ? setInterval(refreshConnectivity,1000) : null;
+  if(debug) {queueMicrotask(refreshConnectivity);if(role==='manager')void tagAttempt();}
   const deadline=setTimeout(()=>{if(!ready)fail('pairError');},SIGNAL_TTL);
-  function diagnostics() {return {version:PAIRING_BUILD,role,ready,failure,signaling:pc.signalingState,ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,channel:channel?.readyState??'none',local:summarizeCandidates(pc.localDescription?.sdp),remote:summarizeCandidates(pc.remoteDescription?.sdp),connectivity,transitions:[...transitions]};}
+  function diagnostics() {return debug ? {version:PAIRING_BUILD,attemptId,role,ready,failure,signaling:pc.signalingState,ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,channel:channel?.readyState??'none',local:summarizeCandidates(pc.localDescription?.sdp),remote:summarizeCandidates(pc.remoteDescription?.sdp),connectivity,transitions:[...transitions]} : null;}
+  async function tagAttempt() {
+    if(!debug || !crypto.subtle)return;
+    const current=session;
+    try {
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`yams-debug-attempt:${current}`));
+      if(closed || current!==session)return;
+      attemptId=[...new Uint8Array(digest)].slice(0,8).map(byte=>byte.toString(16).padStart(2,'0')).join('');
+      report('attempt-tag');
+    } catch { /* A debug tag must never prevent pairing. */ }
+  }
   async function refreshConnectivity() {
-    if(closed||ready||statsBusy)return;
+    if(!debug||closed||ready||statsBusy)return;
     if(typeof pc.getStats!=='function') {connectivity={available:false,reason:'unsupported'};clearInterval(statsTimer);callbacks.onDiagnostics?.(diagnostics());return;}
     statsBusy=true;
     try {
@@ -161,7 +172,7 @@ export function createPeer(role, callbacks = {}) {
     finally {statsBusy=false;}
   }
   function report(event) {
-    if(closed)return;
+    if(!debug||closed)return;
     transitions.push({ms:Date.now()-created,event,ice:pc.iceConnectionState,connection:pc.connectionState,channel:channel?.readyState??'none'});
     if(transitions.length>16)transitions.shift();
     callbacks.onDiagnostics?.(diagnostics());
@@ -232,7 +243,7 @@ export function createPeer(role, callbacks = {}) {
     get live(){return live;}, get ready(){return ready;}, get closed(){return closed;},
     diagnostics,
     async offer(){await pc.setLocalDescription(await pc.createOffer());await gatherIce(pc);return encodeSignal({type:'offer',session,expires,sdp:pc.localDescription.sdp});},
-    async answer(text){const offer=await decodeSignal(text,'offer');session=offer.session;expires=offer.expires;await pc.setRemoteDescription({type:'offer',sdp:offer.sdp});await pc.setLocalDescription(await pc.createAnswer());await gatherIce(pc);return encodeSignal({type:'answer',session,expires,sdp:pc.localDescription.sdp});},
+    async answer(text){const offer=await decodeSignal(text,'offer');session=offer.session;expires=offer.expires;if(debug)void tagAttempt();await pc.setRemoteDescription({type:'offer',sdp:offer.sdp});await pc.setLocalDescription(await pc.createAnswer());await gatherIce(pc);return encodeSignal({type:'answer',session,expires,sdp:pc.localDescription.sdp});},
     validateAnswer(text){return decodeSignal(text,'answer',session);},
     async acceptAnswer(text){const answer=await decodeSignal(text,'answer',session);await pc.setRemoteDescription({type:'answer',sdp:answer.sdp});report('answer-accepted');if(!ready&&!closed)connectingDeadline=setTimeout(()=>fail('connectionFailed'),45_000);},
     publish, close,
