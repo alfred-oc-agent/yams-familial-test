@@ -2,6 +2,7 @@ import { BUILD_NUMBER, DIAGNOSTICS_ENABLED } from './build-profile.js';
 
 // Public form destination, not a credential. Excluded from production artifacts.
 const ENDPOINT = 'https://formsubmit.co/ajax/alfred.oc.agent@gmail.com';
+const MAIL_DESTINATION = 'alfred.oc.agent@gmail.com';
 const candidateKeys = ['total','udp','tcp','mdns','ipv4','ipv6'];
 const nativeCandidateKeys = [...candidateKeys,'host','srflx','prflx','relay','unknownAddress'];
 const pairKeys = ['total','frozen','waiting','inProgress','succeeded','failed','other','nominated','selected'];
@@ -55,9 +56,23 @@ export function createDiagnosticReport(input, { reportId = crypto.randomUUID(), 
   return {schema:1,build:BUILD_NUMBER,profile:'test',reportId,reportedAt:now.toISOString(),device:deviceSummary(nav),diagnostic:sanitizeDiagnostic(input)};
 }
 
+function subject(report) {return `[YAMS-TEST] v${BUILD_NUMBER} ${report.diagnostic.role} ${report.device.browser} ${report.diagnostic.attemptId??'no-attempt'}`;}
+
+// The same outbound allowlist applies to email drafts, shared files and HTTPS.
+export function diagnosticExport(input, options) {
+  const report=createDiagnosticReport(input,options);
+  const text=JSON.stringify(report,null,2);
+  const mailto=`mailto:${MAIL_DESTINATION}?subject=${encodeURIComponent(subject(report))}&body=${encodeURIComponent(text)}`;
+  return {text,mailto,reportId:report.reportId,fileName:`yams-diagnostic-v${BUILD_NUMBER}-${report.diagnostic.role}-${report.reportId.slice(0,8)}.json`};
+}
+
+export class DiagnosticSendError extends Error {
+  constructor(code,status=null){super(code);this.name='DiagnosticSendError';this.code=code;this.status=status;}
+}
+
 export async function sendDiagnostic(input, { fetchImpl = globalThis.fetch, reportId } = {}) {
   if (!DIAGNOSTICS_ENABLED) throw Error('diagnostics-disabled');
-  if (globalThis.navigator?.onLine === false) throw Error('diagnostics-offline');
+  if (globalThis.navigator?.onLine === false) throw new DiagnosticSendError('offline');
   const report=createDiagnosticReport(input,{reportId});
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),20_000);
@@ -65,11 +80,15 @@ export async function sendDiagnostic(input, { fetchImpl = globalThis.fetch, repo
     // FormSubmit requires a Referer. Send only the public origin, never a page URL.
     const response=await fetchImpl(ENDPOINT,{method:'POST',credentials:'omit',referrerPolicy:'origin',
       headers:{'Content-Type':'application/json','Accept':'application/json'},signal:controller.signal,
-      body:JSON.stringify({_subject:`[YAMS-TEST] v${BUILD_NUMBER} ${report.diagnostic.role} ${report.device.browser} ${report.diagnostic.attemptId??'no-attempt'}`,
+      body:JSON.stringify({_subject:subject(report),
         _captcha:'false',_template:'table',report:JSON.stringify(report,null,2)}),
     });
-    const result=await response.json();
-    if(!response.ok || ![true,'true'].includes(result?.success)) throw Error('diagnostic-send-failed');
+    if(!response.ok)throw new DiagnosticSendError('service',response.status);
+    let result;try{result=await response.json();}catch{throw new DiagnosticSendError('response');}
+    if(![true,'true'].includes(result?.success)) throw new DiagnosticSendError('rejected');
     return {reportId:report.reportId};
+  } catch(error) {
+    if(error instanceof DiagnosticSendError)throw error;
+    throw new DiagnosticSendError(controller.signal.aborted?'timeout':'network');
   } finally {clearTimeout(timer);}
 }

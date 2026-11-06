@@ -39,6 +39,7 @@ const ui = {
   observation: null, pairing: null, banner: "", lastDiagnostic: null,
 };
 let diagnosticUpload = { status: 'idle', key: null, reportId: null };
+let diagnosticTools = null, diagnosticToolsPromise = null, diagnosticShare = null;
 
 function id(prefix) {
   return `${prefix}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
@@ -487,6 +488,12 @@ window.addEventListener("popstate", (event) => {
 });
 
 app.addEventListener("click", async (event) => {
+  const mail=event.target.closest('[data-debug-mail]');
+  if(mail && DIAGNOSTICS_ENABLED && diagnosticTools && ui.lastDiagnostic) {
+    // Refresh synchronously before native mail navigation: never send an old poll.
+    mail.href=diagnosticTools.diagnosticExport(ui.lastDiagnostic).mailto;
+    return;
+  }
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -498,6 +505,7 @@ app.addEventListener("click", async (event) => {
   else if (action === "pair-next") { ui.pairing.step = "scan-answer"; ui.pairing.error = ""; render(); }
   else if (action === "pair-zoom") { ui.pairing.expanded = !ui.pairing.expanded; render(); }
   else if (action === "debug-send" && DIAGNOSTICS_ENABLED) await uploadDiagnostic();
+  else if (action === "debug-share" && DIAGNOSTICS_ENABLED) await shareDiagnostic();
   else if (action === "pair-copy" && DIAGNOSTICS_ENABLED) {
     try {await navigator.clipboard.writeText(JSON.stringify(ui.pairing.diagnostics,null,2));button.textContent=t('v3.copied');}
     catch {const block=document.querySelector('[data-pair-diagnostics]');if(block){const range=document.createRange();range.selectNodeContents(block);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}}
@@ -608,6 +616,8 @@ function updatePairDiagnostics(pair, details) {
   if(!DIAGNOSTICS_ENABLED || ui.pairing!==pair)return;
   pair.diagnostics=details;
   ui.lastDiagnostic=details;
+  // Local module only; loading it never submits a report or opens another app.
+  if(!diagnosticToolsPromise)void loadDiagnosticTools().catch(()=>{});
   const block=document.querySelector('[data-pair-diagnostics]');
   if(block)block.textContent=JSON.stringify(details,null,2);
 }
@@ -617,7 +627,40 @@ function diagnosticKey(details) { return `${details?.attemptId ?? 'pending'}:${d
 function diagnosticUploadControls() {
   if(!DIAGNOSTICS_ENABLED || !ui.lastDiagnostic)return '';
   const status=diagnosticUpload.key===diagnosticKey(ui.lastDiagnostic) ? diagnosticUpload.status : 'idle';
-  return `<button class="button quiet" data-action="debug-send" ${diagnosticUpload.status==='sending'?'disabled':''}>${t(status==='sending'?'v3.sendingDiagnostic':'v3.sendDiagnostic')}</button><p class="debug-send-status" role="status">${status==='sent'?escapeHtml(t('v3.diagnosticSent',{id:diagnosticUpload.reportId.slice(0,8)})):status==='error'?t('v3.diagnosticSendError'):''}</p>`;
+  const failureKey=diagnosticUpload.reason==='offline'?'diagnosticOffline':diagnosticUpload.reason==='rejected'?'diagnosticRejected':'diagnosticSendError';
+  const exported=diagnosticTools?.diagnosticExport(ui.lastDiagnostic);
+  return `<button class="button quiet" data-action="debug-send" ${diagnosticUpload.status==='sending'?'disabled':''}>${t(status==='sending'?'v3.sendingDiagnostic':'v3.sendDiagnostic')}</button><p class="debug-send-status" role="status">${status==='sent'?escapeHtml(t('v3.diagnosticSent',{id:diagnosticUpload.reportId.slice(0,8)})):status==='error'?t('v3.'+failureKey):''}</p>${exported?`<div class="diagnostic-fallback"><p>${t('v3.diagnosticFallbackHelp')}</p><div class="diagnostic-fallback-actions"><a class="button quiet" data-debug-mail href="${escapeHtml(exported.mailto)}">${t('v3.diagnosticMail')}</a><button class="button quiet" data-action="debug-share">${t('v3.diagnosticShare')}</button></div><p role="status">${diagnosticShare?.key===diagnosticKey(ui.lastDiagnostic)?t('v3.'+diagnosticShare.message):''}</p></div>`:''}`;
+}
+
+function updateDiagnosticControls() {
+  document.querySelectorAll('[data-debug-upload-controls]').forEach(block=>{block.innerHTML=diagnosticUploadControls();});
+}
+
+function loadDiagnosticTools() {
+  if(!DIAGNOSTICS_ENABLED)return Promise.reject(Error('diagnostics-disabled'));
+  if(!diagnosticToolsPromise)diagnosticToolsPromise=import('./debug-reporting.js').then(module=>{diagnosticTools=module;updateDiagnosticControls();return module;}).catch(error=>{diagnosticToolsPromise=null;throw error;});
+  return diagnosticToolsPromise;
+}
+
+async function shareDiagnostic() {
+  if(!DIAGNOSTICS_ENABLED || !ui.lastDiagnostic)return;
+  const details=ui.lastDiagnostic,key=diagnosticKey(details);
+  const tools=await loadDiagnosticTools();
+  const exported=tools.diagnosticExport(details);
+  const file=new File([exported.text],exported.fileName,{type:'application/json'});
+  try {
+    if(navigator.canShare?.({files:[file]})) {
+      await navigator.share({files:[file],title:`Yam’s · v${BUILD_NUMBER}`});
+      diagnosticShare={key,message:'diagnosticShared'};
+    } else {
+      const url=URL.createObjectURL(file),link=document.createElement('a');link.href=url;link.download=exported.fileName;
+      document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60_000);
+      diagnosticShare={key,message:'diagnosticDownloaded'};
+    }
+  } catch(error) {
+    if(error.name!=='AbortError')diagnosticShare={key,message:'diagnosticShareError'};
+  }
+  updateDiagnosticControls();
 }
 
 function lastDiagnosticControls() {
@@ -630,14 +673,13 @@ async function uploadDiagnostic() {
   // A retry of an ambiguous timeout reuses its public report ID for deduplication.
   const reportId=diagnosticUpload.key===key && diagnosticUpload.status==='error' ? diagnosticUpload.reportId : crypto.randomUUID();
   diagnosticUpload={status:'sending',key,reportId};
-  const update=()=>document.querySelectorAll('[data-debug-upload-controls]').forEach(block=>{block.innerHTML=diagnosticUploadControls();});
-  update();
+  updateDiagnosticControls();
   try {
-    const {sendDiagnostic}=await import('./debug-reporting.js');
+    const {sendDiagnostic}=await loadDiagnosticTools();
     await sendDiagnostic(details,{reportId});
     diagnosticUpload={status:'sent',key,reportId};
-  } catch {diagnosticUpload={status:'error',key,reportId};}
-  update(); // Never rerender the camera, QR or game when an upload settles.
+  } catch(error) {diagnosticUpload={status:'error',key,reportId,reason:error.code??'network'};}
+  updateDiagnosticControls(); // Never rerender the camera, QR or game when an upload settles.
 }
 
 async function beginAdding() {
