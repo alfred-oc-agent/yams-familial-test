@@ -40,6 +40,7 @@ const ui = {
 };
 let diagnosticUpload = { status: 'idle', key: null, reportId: null };
 let diagnosticTools = null, diagnosticToolsPromise = null, diagnosticShare = null;
+let internalTest = {status:'idle',result:null};
 
 function id(prefix) {
   return `${prefix}-${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
@@ -201,7 +202,7 @@ function renderHome() {
     <p class="eyebrow">${t("home.eyebrow")}</p><h1>Yam’s</h1><p class="lead">${escapeHtml(ui.tagline)}</p>
     <div class="home-actions">${ui.banner ? `<p class="constraint-warning" role="status">${escapeHtml(ui.banner)}</p>` : ""}${data.activeGame ? `<button class="button primary large" data-action="resume">${t("home.resume")}</button>` : ""}<button class="button ${data.activeGame ? "secondary" : "primary"} large" data-action="new-game">${t("home.newGame")}</button><button class="button secondary large" data-action="join-game">${t("v3.join")}</button><div class="action-pair"><button class="button quiet" data-action="rules">${t("home.readRules")}</button><button class="button quiet" data-action="stats">${t("home.statistics")}</button></div>${languagePicker()}</div>
     ${data.activeGame ? `<p class="saved-note">${t("home.saved", { players: data.activeGame.basePlayers.length, scores: data.activeGame.timeline.cursor })}</p>` : `<p class="saved-note">${t("home.offline")}</p>`}
-  </section>${DIAGNOSTICS_ENABLED ? `<footer class="test-footer"><p>${t('v3.testVersion',{version:BUILD_NUMBER})}</p><div data-debug-last>${lastDiagnosticControls()}</div></footer>` : ''}</main>`;
+  </section>${DIAGNOSTICS_ENABLED ? `<footer class="test-footer"><p>${t('v3.testVersion',{version:BUILD_NUMBER})}</p><div data-internal-test-controls>${internalTestControls()}</div><div data-debug-last>${lastDiagnosticControls()}</div></footer>` : ''}</main>`;
 }
 
 function renderCountSetup() {
@@ -506,6 +507,7 @@ app.addEventListener("click", async (event) => {
   else if (action === "pair-zoom") { ui.pairing.expanded = !ui.pairing.expanded; render(); }
   else if (action === "debug-send" && DIAGNOSTICS_ENABLED) await uploadDiagnostic();
   else if (action === "debug-share" && DIAGNOSTICS_ENABLED) await shareDiagnostic();
+  else if (action === "debug-self-test" && DIAGNOSTICS_ENABLED) await testThisDevice();
   else if (action === "pair-copy" && DIAGNOSTICS_ENABLED) {
     try {await navigator.clipboard.writeText(JSON.stringify(ui.pairing.diagnostics,null,2));button.textContent=t('v3.copied');}
     catch {const block=document.querySelector('[data-pair-diagnostics]');if(block){const range=document.createRange();range.selectNodeContents(block);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}}
@@ -615,11 +617,36 @@ function pairError(pair, code) {
 function updatePairDiagnostics(pair, details) {
   if(!DIAGNOSTICS_ENABLED || ui.pairing!==pair)return;
   pair.diagnostics=details;
-  ui.lastDiagnostic=details;
+  ui.lastDiagnostic=internalTest.result?{...details,selfTest:internalTest.result}:details;
   // Local module only; loading it never submits a report or opens another app.
   if(!diagnosticToolsPromise)void loadDiagnosticTools().catch(()=>{});
   const block=document.querySelector('[data-pair-diagnostics]');
   if(block)block.textContent=JSON.stringify(details,null,2);
+}
+
+function internalTestControls() {
+  if(!DIAGNOSTICS_ENABLED)return '';
+  const label=internalTest.status==='running'?'internalTestRunning':'internalTest';
+  const result=internalTest.status==='passed'?'internalTestPassed':internalTest.status==='failed'?'internalTestFailed':null;
+  return `<div class="internal-test"><button class="button quiet" data-action="debug-self-test" ${internalTest.status==='running'?'disabled':''}>${t('v3.'+label)}</button><p>${t('v3.internalTestHelp')}</p><p role="status">${result?t('v3.'+result):''}</p></div>`;
+}
+
+function updateInternalTestControls() {
+  document.querySelectorAll('[data-internal-test-controls]').forEach(block=>{block.innerHTML=internalTestControls();});
+  document.querySelectorAll('[data-debug-last]').forEach(block=>{block.innerHTML=lastDiagnosticControls();});
+}
+
+async function testThisDevice() {
+  if(!DIAGNOSTICS_ENABLED||internalTest.status==='running')return;
+  internalTest={status:'running',result:null};updateInternalTestControls();
+  let result,env=null;
+  try {
+    const tools=await import('./peer-diagnostics.js');
+    [result,env]=await Promise.all([tools.runLocalPeerTest(createPeer),tools.readEnvironment()]);
+  } catch {result={result:'failed',failure:'setup',durationMs:null,manager:null,observer:null};}
+  result.completedAt=Date.now();internalTest={status:result.result,result};
+  ui.lastDiagnostic=ui.lastDiagnostic?{...ui.lastDiagnostic,selfTest:result}:{version:BUILD_NUMBER,kind:'local-test',role:'device',ready:result.result==='passed',environment:env,selfTest:result};
+  void loadDiagnosticTools().catch(()=>{});updateInternalTestControls();updateDiagnosticControls();
 }
 
 function diagnosticKey(details) { return `${details?.attemptId ?? 'pending'}:${details?.role ?? ''}:${details?.failure ?? ''}:${!!details?.ready}`; }

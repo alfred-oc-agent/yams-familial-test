@@ -1,6 +1,6 @@
 // prepare-release.mjs replaces this profile for production artifacts.
 export const BUILD_PROFILE = 'test';
-export const BUILD_NUMBER = 12;
+export const BUILD_NUMBER = 13;
 
 export function isDiagnosticsOrigin(value) {
   try {

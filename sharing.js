@@ -145,10 +145,30 @@ export function createPeer(role, callbacks = {}, { diagnostics: debug = DIAGNOST
   let serial=0, acknowledged=0, finishing=null, connectingDeadline=null;
   let failure=null,attemptId=null; const transitions=[]; const created=Date.now();
   let connectivity={available:false,reason:'pending'},statsBusy=false;
+  let transport={available:false},environment=null,technicalTimer=null,technicalBusy=false,technicalKey=null;
+  const technicalModule=debug?import('./peer-diagnostics.js'):null;
+  if(debug)void technicalModule.then(module=>module.readEnvironment()).then(value=>{
+    if(!closed){environment=value;callbacks.onDiagnostics?.(diagnostics());}
+  }).catch(()=>{});
   const statsTimer=debug ? setInterval(refreshConnectivity,1000) : null;
   if(debug) {queueMicrotask(refreshConnectivity);if(role==='manager')void tagAttempt();}
   const deadline=setTimeout(()=>{if(!ready)fail('pairError');},SIGNAL_TTL);
-  function diagnostics() {return debug ? {version:PAIRING_BUILD,attemptId,role,ready,failure,signaling:pc.signalingState,ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,channel:channel?.readyState??'none',local:summarizeCandidates(pc.localDescription?.sdp),remote:summarizeCandidates(pc.remoteDescription?.sdp),connectivity,transitions:[...transitions]} : null;}
+  function diagnostics() {return debug ? {version:PAIRING_BUILD,attemptId,role,ready,failure,signaling:pc.signalingState,ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,channel:channel?.readyState??'none',local:summarizeCandidates(pc.localDescription?.sdp),remote:summarizeCandidates(pc.remoteDescription?.sdp),connectivity,transport,environment,transitions:[...transitions]} : null;}
+  async function refreshTransport() {
+    if(!debug||closed)return;
+    if(technicalBusy){technicalTimer=setTimeout(refreshTransport,50);return;}
+    const local=pc.localDescription?.sdp??'',remote=pc.remoteDescription?.sdp??'',salt=session;
+    const key=`${salt}\0${local}\0${remote}`;
+    if(key===technicalKey)return;
+    technicalBusy=true;
+    try {
+      const module=await technicalModule,value=await module.describeTransport(local,remote,salt);
+      if(closed)return;
+      if(local!==(pc.localDescription?.sdp??'')||remote!==(pc.remoteDescription?.sdp??'')||salt!==session){technicalTimer=setTimeout(refreshTransport,50);return;}
+      transport={...value,sampledAtMs:Date.now()-created};technicalKey=key;callbacks.onDiagnostics?.(diagnostics());
+    } catch { /* Instrumentation failure must not change negotiation. */ }
+    finally {technicalBusy=false;}
+  }
   async function tagAttempt() {
     if(!debug || !crypto.subtle)return;
     const current=session;
@@ -173,6 +193,7 @@ export function createPeer(role, callbacks = {}, { diagnostics: debug = DIAGNOST
   }
   function report(event) {
     if(!debug||closed)return;
+    clearTimeout(technicalTimer);technicalTimer=setTimeout(refreshTransport,50);
     transitions.push({ms:Date.now()-created,event,ice:pc.iceConnectionState,connection:pc.connectionState,channel:channel?.readyState??'none'});
     if(transitions.length>16)transitions.shift();
     callbacks.onDiagnostics?.(diagnostics());
@@ -238,7 +259,7 @@ export function createPeer(role, callbacks = {}, { diagnostics: debug = DIAGNOST
   pc.addEventListener('iceconnectionstatechange',()=>{report('ice');if(pc.iceConnectionState==='failed')fail('connectionFailed');});
   pc.addEventListener('icegatheringstatechange',()=>report('gathering'));
   pc.addEventListener('signalingstatechange',()=>report('signaling'));
-  function close() {if(closed)return;closed=true;clearTimeout(deadline);clearTimeout(connectingDeadline);clearInterval(statsTimer);clearInterval(heartbeat);clearTimeout(finishing);channel?.close();pc.close();status(false);}
+  function close() {if(closed)return;closed=true;technicalKey=null;clearTimeout(technicalTimer);clearTimeout(deadline);clearTimeout(connectingDeadline);clearInterval(statsTimer);clearInterval(heartbeat);clearTimeout(finishing);channel?.close();pc.close();status(false);}
   return {
     get live(){return live;}, get ready(){return ready;}, get closed(){return closed;},
     diagnostics,

@@ -1,4 +1,4 @@
-const CACHE_NAME = "yams-score-v12";
+const CACHE_NAME = "yams-score-v13";
 // Replaced with false by prepare-release.mjs for production artifacts.
 const DIAGNOSTICS_BUILD = true;
 const DIAGNOSTICS_ORIGIN = ['localhost','127.0.0.1','[::1]'].includes(self.location.hostname)
@@ -11,7 +11,7 @@ const ASSETS = [
   "./manifest.webmanifest", "./icon.svg",
   "./icon-192.png", "./icon-512.png",
 ];
-if (DIAGNOSTICS_BUILD && DIAGNOSTICS_ORIGIN) ASSETS.push('./debug-reporting.js');
+if (DIAGNOSTICS_BUILD && DIAGNOSTICS_ORIGIN) ASSETS.push('./debug-reporting.js','./peer-diagnostics.js');
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));

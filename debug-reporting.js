@@ -19,10 +19,30 @@ const states = {
 const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const counters = (value, keys) => Object.fromEntries(keys.map(key => [key, count(value?.[key])]));
 const state = (key, value) => states[key].includes(value) ? value : null;
+const safeTag=value=>/^[a-f0-9]{32}$/.test(value??'')?value:null;
+const scopeKeys=['privateIpv4','sharedIpv4','publicIpv4','loopback','linkLocal','uniqueLocalIpv6','publicIpv6','mdns','unspecified','unknown'];
+function transportSide(input) {
+  if(!input || typeof input!=='object')return null;
+  return {descriptionTag:safeTag(input.descriptionTag),credentialsTag:safeTag(input.credentialsTag),candidatesTag:safeTag(input.candidatesTag),
+    privatePrefixTags:Array.isArray(input.privatePrefixTags)?input.privatePrefixTags.map(safeTag).filter(Boolean).slice(0,16):[],
+    scopes:counters(input.scopes,scopeKeys),zeroPorts:count(input.zeroPorts)};
+}
+function environment(input) {
+  if(!input || typeof input!=='object')return null;
+  const permissions=Object.fromEntries(['localNetwork','loopbackNetwork','legacyLocalNetwork','camera'].map(key=>[key,['granted','denied','prompt','unsupported','unavailable'].includes(input[key])?input[key]:'unavailable']));
+  return {...permissions,secureContext:input.secureContext===true,visibility:['visible','hidden'].includes(input.visibility)?input.visibility:'unknown'};
+}
+function selfTestSide(input) {
+  if(!input || typeof input!=='object')return null;
+  const safe=sanitizeDiagnostic(input,false);
+  return {ready:safe.ready,ice:safe.ice,connection:safe.connection,channel:safe.channel,local:safe.local,remote:safe.remote,connectivity:safe.connectivity};
+}
 
 // Re-project at the outbound boundary: never spread a diagnostic/native object.
-export function sanitizeDiagnostic(input = {}) {
-  const result = { version: BUILD_NUMBER, role: ['manager','observer'].includes(input.role) ? input.role : 'unknown',
+export function sanitizeDiagnostic(input = {}, includeSelfTest = true) {
+  if(!input || typeof input!=='object')input={};
+  const result = { version: Number.isSafeInteger(input.version)&&input.version>=1&&input.version<=BUILD_NUMBER?input.version:BUILD_NUMBER,
+    kind:input.kind==='local-test'?'local-test':'pairing',role: ['manager','observer','device'].includes(input.role) ? input.role : 'unknown',
     attemptId: /^[a-f0-9]{16}$/.test(input.attemptId ?? '') ? input.attemptId : null,
     ready: input.ready === true, failure: state('failure',input.failure),
     ...Object.fromEntries(['signaling','ice','gathering','connection','channel'].map(key=>[key,state(key,input[key])])),
@@ -37,6 +57,14 @@ export function sanitizeDiagnostic(input = {}) {
     pairs:counters(network.pairs,pairKeys),checks:counters(network.checks,checkKeys),counterCoverage:counters(network.counterCoverage,checkKeys),
     dtlsStates:Array.isArray(network.dtlsStates) ? [...new Set(network.dtlsStates.filter(value=>['new','connecting','connected','closed','failed'].includes(value)))].sort() : [],
   } : {available:false,reason:['pending','unsupported','unavailable'].includes(network?.reason) ? network.reason : 'unavailable'};
+  result.environment=environment(input.environment);
+  result.transport=input.transport?.available===true?{available:true,sampledAtMs:count(input.transport.sampledAtMs),
+    local:transportSide(input.transport.local),remote:transportSide(input.transport.remote),sharedPrivatePrefix24:count(input.transport.sharedPrivatePrefix24)}:{available:false};
+  if(includeSelfTest && ['passed','failed'].includes(input.selfTest?.result))result.selfTest={
+    result:input.selfTest.result,durationMs:count(input.selfTest.durationMs),completedAt:count(input.selfTest.completedAt),
+    failure:['connectionFailed','pairError','unsupported','timeout','stateMismatch','setup'].includes(input.selfTest.failure)?input.selfTest.failure:null,
+    manager:selfTestSide(input.selfTest.manager),observer:selfTestSide(input.selfTest.observer),
+  };
   return result;
 }
 
