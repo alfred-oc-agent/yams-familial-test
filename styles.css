@@ -209,7 +209,13 @@ html[dir="rtl"] .score-table tr > *:last-child { border-left: 0; }
 .modal-backdrop:has(.pair-modal.qr-expanded) { padding: 0; place-items: center; }
 .pair-modal.qr-expanded { width: 100vw; max-width: none; max-height: 100dvh; padding: 3.2rem .25rem .5rem; border-radius: 0; }
 .qr-expanded .qr-frame { width: min(100%,calc(100dvh - 15rem)); margin: .5rem auto; }
-.qr-expanded h2,.qr-expanded .dialog-help,.qr-expanded .pair-network,.qr-expanded .pair-diagnostics { display: none; }
+.qr-expanded h2,.qr-expanded .dialog-help,.qr-expanded .pair-network,.qr-expanded .pair-diagnostics,.qr-expanded .pair-help { display: none; }
+.pair-help { margin: .8rem 0; padding: .2rem .8rem; text-align: start; font-size: .82rem; line-height: 1.5; background: var(--green-soft); border-radius: 10px; }
+.pair-help summary { cursor: pointer; padding-block: .6rem; font-weight: 700; }
+.pair-help h3 { margin: .2rem 0 .5rem; font-size: .9rem; }
+.pair-help ol { padding-inline-start: 1.4rem; }
+.pair-help li { margin-block: .4rem; }
+.pair-help-note { color: var(--muted); font-size: .76rem; }
 .pair-diagnostics { margin: .8rem 0; text-align: start; font-size: .78rem; color: var(--muted); }
 .pair-diagnostics summary { cursor: pointer; padding: .6rem 0; }
 .pair-diagnostics pre { max-height: 15rem; overflow: auto; padding: .7rem; background: var(--green-soft); border-radius: 8px; font-size: .68rem; direction: ltr; text-align: left; }

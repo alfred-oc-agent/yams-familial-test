@@ -800,6 +800,13 @@ async function handlePairingCode(text, pair) {
   return true;
 }
 
+function connectionPermissionHelp(pair) {
+  // Browser permissions do not expose Android's permission for the host browser.
+  // Keep this normal product help independent of debug modules and native probes.
+  const opened=pair.step==='error' && ['connectionFailed','pairError'].includes(pair.error);
+  return `<details class="pair-help" ${opened?'open':''}><summary>${t('v3.connectionHelp')}</summary><h3>${t('v3.androidPermissionTitle')}</h3><p>${t('v3.androidPermissionIntro')}</p><ol><li>${t('v3.androidSettingsStep')}</li><li>${t('v3.androidBrowserStep')}</li><li>${t('v3.androidAllowStep')}</li></ol><p>${t('v3.androidPermissionShortcut')}</p><p>${t('v3.androidPermissionMissing')}</p><p class="pair-help-note">${t('v3.androidPermissionUnknown')}</p><p>${t('v3.androidPermissionReturn')}</p></details>`;
+}
+
 function pairingModal() {
   const pair=ui.pairing;
   if(!pair)return '';
@@ -814,7 +821,7 @@ function pairingModal() {
     body=`<p class="constraint-warning" role="alert">${t('v3.'+pair.error)}</p><button class="button primary full" data-action="pair-retry">${t('v3.retry')}</button>`;
   } else body=`<p class="pair-status" role="status">${t(pair.step==='preparing'?'v3.preparing':'v3.connecting')}</p>`;
   const diagnostics=DIAGNOSTICS_ENABLED && pair.diagnostics && !pair.step.startsWith('scan-') ? `<details class="pair-diagnostics" ${['connecting','error'].includes(pair.step)?'open':''}><summary>${t('v3.diagDetails')}</summary><button class="button quiet" data-action="pair-copy">${t('v3.copyDiagnostic')}</button><p>${t('v3.diagHelp')}</p><pre data-pair-diagnostics tabindex="0">${escapeHtml(JSON.stringify(pair.diagnostics,null,2))}</pre><p>${t('v3.sendDiagnosticHelp')}</p><div data-debug-upload-controls>${diagnosticUploadControls()}</div></details>` : '';
-  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}${DIAGNOSTICS_ENABLED ? ` <small class="pair-version">v${PAIRING_BUILD}</small>` : ''}</h2>${body}${diagnostics}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
+  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}${DIAGNOSTICS_ENABLED ? ` <small class="pair-version">v${PAIRING_BUILD}</small>` : ''}</h2>${body}${pair.step!=='added'?connectionPermissionHelp(pair):''}${diagnostics}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p><button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
 }
 
 function renderPairingMedia() {
