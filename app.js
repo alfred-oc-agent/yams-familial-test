@@ -23,6 +23,7 @@ import { createWakeLock } from "./wake-lock.js";
 const wakeLock = createWakeLock();
 const app = document.querySelector("#app");
 const DICE_GLYPHS = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+const TURN_NOTICE_DURATION_MS = 5000;
 
 let data;
 let navDepth = 0;
@@ -81,6 +82,7 @@ function navigate(screen, { replace = false } = {}) {
 }
 
 function openModal(modal) {
+  clearTurnNotice();
   ui.modal = modal;
   navDepth += 1;
   history.pushState(historyState({ modal: modal.type }), "");
@@ -296,7 +298,7 @@ function turnNoticeMarkup() {
     column: gameFormat(notice.format) === "classic" ? t(`turnNotice.columns.${notice.columnId}`) : "",
     score: notice.entry.score, points: tp("turnNotice.points", notice.entry.score),
   });
-  return `<div class="turn-notice" role="status"><strong>${escapeHtml(message)}</strong>${notice.nextName ? `<small>${t("turnNotice.next", { name: escapeHtml(notice.nextName) })}</small>` : ""}</div>`;
+  return `<div class="turn-notice" role="status" style="--turn-notice-duration:${TURN_NOTICE_DURATION_MS}ms"><strong>${escapeHtml(message)}</strong>${notice.nextName ? `<small>${t("turnNotice.next", { name: escapeHtml(notice.nextName) })}</small>` : ""}</div>`;
 }
 
 function renderGame() {
@@ -437,7 +439,7 @@ async function commitEntry(entry) {
   await persist();
   publishGame(ui.turnNotice ? id("notice") : null);
   render();
-  if (ui.turnNotice) { clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { ui.turnNotice = null; noticeTimer = null; if (["game", "results"].includes(ui.screen)) render(); }, 1450); }
+  if (ui.turnNotice) { clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { ui.turnNotice = null; noticeTimer = null; if (["game", "results"].includes(ui.screen)) render(); }, TURN_NOTICE_DURATION_MS); }
   } finally { scoringBusy = false; }
 }
 
@@ -753,7 +755,7 @@ function receiveObservedGame(game, noticeId) {
       const next=game.basePlayers[activePlayerIndex(game.basePlayers.length,game.timeline.cursor)];
       clearTurnNotice();
       ui.turnNotice={playerName:player.name,nextName:game.status === "active" ? next.name : null,format:gameFormat(game),columnId:event.columnId,categoryId:event.categoryId,entry:event.entry};
-      noticeTimer=setTimeout(()=>{ui.turnNotice=null;noticeTimer=null;if(['game','results'].includes(ui.screen))render();},1450);
+      noticeTimer=setTimeout(()=>{ui.turnNotice=null;noticeTimer=null;if(['game','results'].includes(ui.screen))render();},TURN_NOTICE_DURATION_MS);
     }
   }
   if (game.status !== 'active') {

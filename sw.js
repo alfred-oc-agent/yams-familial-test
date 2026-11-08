@@ -1,4 +1,4 @@
-const CACHE_NAME = "yams-score-v16";
+const CACHE_NAME = "yams-score-v17";
 // Replaced with false by prepare-release.mjs for production artifacts.
 const DIAGNOSTICS_BUILD = true;
 const DIAGNOSTICS_ORIGIN = ['localhost','127.0.0.1','[::1]'].includes(self.location.hostname)

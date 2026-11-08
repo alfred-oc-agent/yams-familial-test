@@ -137,11 +137,11 @@ h2 { margin-bottom: .65rem; font-size: clamp(1.55rem, 3vw, 2.35rem); }
 .game-hint { margin: .75rem 0 0; color: var(--muted); font-size: .75rem; text-align: center; }
 .turn-changing .score-table-wrap { animation: table-handoff 750ms ease both; }
 .turn-changing .turn-identity strong, .turn-changing .turn-mobile strong { animation: next-player 650ms ease both; }
-.turn-notice { position: fixed; z-index: 80; inset: 50% auto auto 50%; display: grid; gap: .25rem; width: min(calc(100% - 2rem),560px); padding: 1.25rem 1.5rem; border: 1px solid rgba(255,255,255,.28); border-radius: 20px; background: rgba(16,39,31,.96); color: white; text-align: center; box-shadow: 0 24px 75px rgba(0,0,0,.3); transform: translate(-50%,-50%); animation: turn-notice 1450ms ease both; pointer-events: none; }
+.turn-notice { position: fixed; z-index: 80; inset: 50% auto auto 50%; display: grid; gap: .25rem; width: min(calc(100% - 2rem),560px); padding: 1.25rem 1.5rem; border: 1px solid rgba(255,255,255,.28); border-radius: 20px; background: rgba(16,39,31,.96); color: white; text-align: center; box-shadow: 0 24px 75px rgba(0,0,0,.3); transform: translate(-50%,-50%); animation: turn-notice var(--turn-notice-duration,5000ms) ease both; pointer-events: none; }
 .turn-notice strong { font-family: Georgia,serif; font-size: clamp(1.2rem,4vw,1.65rem); }
 .turn-notice span { color: #a9dfc5; font-size: .8rem; font-weight: 750; }
 .turn-notice small { margin-top: .35rem; color: rgba(255,255,255,.7); }
-@keyframes turn-notice { 0% { opacity:0; transform:translate(-50%,-42%) scale(.96); } 14%,76% { opacity:1; transform:translate(-50%,-50%) scale(1); } 100% { opacity:0; transform:translate(-50%,-58%) scale(.98); } }
+@keyframes turn-notice { 0% { opacity:0; transform:translate(-50%,-42%) scale(.96); } 4%,94% { opacity:1; transform:translate(-50%,-50%) scale(1); } 100% { opacity:0; transform:translate(-50%,-58%) scale(.98); } }
 @keyframes table-handoff { 0%,100% { filter:none; transform:none; } 35% { filter:saturate(.75) brightness(.94); transform:scale(.995); } }
 @keyframes next-player { from { opacity:.25; transform:translateY(5px); } to { opacity:1; transform:none; } }
 
