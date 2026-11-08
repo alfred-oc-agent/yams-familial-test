@@ -79,5 +79,8 @@ export function randomLine(path) {
 }
 
 export function categoryText(categoryId, field) {
+  // Optional inflected wording for announcements falls back to this locale's
+  // label, rather than an English grammatical form.
+  if (field === "notice") return lookup(PACKS[activeCode], `categories.${categoryId}.notice`) ?? t(`categories.${categoryId}.label`);
   return t(`categories.${categoryId}.${field}`);
 }

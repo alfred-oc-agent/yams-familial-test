@@ -291,9 +291,12 @@ function renderGameTable(players, activeIndex, turnIndex = activeIndex) {
 function turnNoticeMarkup() {
   if (!ui.turnNotice) return "";
   const notice = ui.turnNotice;
-  const category = categoryById(notice.categoryId);
-  const message = notice.entry.kind === "sacrifice" ? t("turnNotice.sacrifice", { name: notice.playerName, category: categoryText(category.id, "label") }) : category.kind === "fixed" ? t("turnNotice.fixed", { name: notice.playerName, category: categoryText(category.id, "label") }) : t("turnNotice.score", { name: notice.playerName, score: notice.entry.score, category: categoryText(category.id, "label") });
-  return `<div class="turn-notice" role="status"><strong>${escapeHtml(message)}</strong><span>${t("turnNotice.column", { column: columnLabel(notice.columnId) })}</span>${notice.nextName ? `<small>${t("turnNotice.next", { name: escapeHtml(notice.nextName) })}</small>` : ""}</div>`;
+  const message = t(notice.entry.kind === "sacrifice" ? "turnNotice.sacrifice" : "turnNotice.score", {
+    name: notice.playerName, category: categoryText(notice.categoryId, "notice"),
+    column: gameFormat(notice.format) === "classic" ? t(`turnNotice.columns.${notice.columnId}`) : "",
+    score: notice.entry.score, points: tp("turnNotice.points", notice.entry.score),
+  });
+  return `<div class="turn-notice" role="status"><strong>${escapeHtml(message)}</strong>${notice.nextName ? `<small>${t("turnNotice.next", { name: escapeHtml(notice.nextName) })}</small>` : ""}</div>`;
 }
 
 function renderGame() {
@@ -425,11 +428,11 @@ async function commitEntry(entry) {
   if (isGameComplete(updatedPlayers, game)) {
     const record = completedGameRecord(game, updatedPlayers, new Date().toISOString());
     const badges = newRecordBadges(previousStats, record.results);
-    ui.turnNotice = { playerName: player.name, nextName: null, columnId: modal.columnId, categoryId: modal.categoryId, entry };
+    ui.turnNotice = { playerName: player.name, nextName: null, format: gameFormat(game), columnId: modal.columnId, categoryId: modal.categoryId, entry };
     data.pastGames.push(record); data.activeGame = null; ui.completed = { record, badges }; ui.statsFormat = gameFormat(game); ui.screen = "results"; refreshTagline("results"); history.replaceState(historyState(), "");
   } else {
     const nextIndex = activePlayerIndex(updatedPlayers.length, game.timeline.cursor);
-    ui.turnNotice = { playerName: player.name, nextName: updatedPlayers[nextIndex].name, columnId: modal.columnId, categoryId: modal.categoryId, entry };
+    ui.turnNotice = { playerName: player.name, nextName: updatedPlayers[nextIndex].name, format: gameFormat(game), columnId: modal.columnId, categoryId: modal.categoryId, entry };
   }
   await persist();
   publishGame(ui.turnNotice ? id("notice") : null);
@@ -749,7 +752,7 @@ function receiveObservedGame(game, noticeId) {
       const player=game.basePlayers.find(p=>p.id===event.playerId);
       const next=game.basePlayers[activePlayerIndex(game.basePlayers.length,game.timeline.cursor)];
       clearTurnNotice();
-      ui.turnNotice={playerName:player.name,nextName:game.status === "active" ? next.name : null,columnId:event.columnId,categoryId:event.categoryId,entry:event.entry};
+      ui.turnNotice={playerName:player.name,nextName:game.status === "active" ? next.name : null,format:gameFormat(game),columnId:event.columnId,categoryId:event.categoryId,entry:event.entry};
       noticeTimer=setTimeout(()=>{ui.turnNotice=null;noticeTimer=null;if(['game','results'].includes(ui.screen))render();},1450);
     }
   }
