@@ -41,6 +41,7 @@ const ui = {
 };
 let diagnosticUpload = { status: 'idle', key: null, reportId: null };
 let diagnosticTools = null, diagnosticToolsPromise = null, diagnosticShare = null;
+let diagnosticRecipientEditing = false, diagnosticRecipientMessage = '', diagnosticRecipientDraft = '';
 let internalTest = {status:'idle',result:null};
 
 function id(prefix) {
@@ -496,6 +497,7 @@ window.addEventListener("popstate", (event) => {
 app.addEventListener("click", async (event) => {
   const mail=event.target.closest('[data-debug-mail]');
   if(mail && DIAGNOSTICS_ENABLED && diagnosticTools && ui.lastDiagnostic) {
+    if(diagnosticRecipientEditing){event.preventDefault();return;}
     // Refresh synchronously before native mail navigation: never send an old poll.
     mail.href=diagnosticTools.diagnosticExport(ui.lastDiagnostic).mailto;
     return;
@@ -509,7 +511,11 @@ app.addEventListener("click", async (event) => {
   else if (action === "join-game") beginJoining();
   else if (action === "rejoin-game") { leaveSharing(); ui.screen = "home"; beginJoining(); }
   else if (action === "pair-next") { ui.pairing.step = "scan-answer"; ui.pairing.error = ""; render(); }
-  else if (action === "pair-zoom") { ui.pairing.expanded = !ui.pairing.expanded; render(); }
+  else if (action === "debug-clear-recipient" && DIAGNOSTICS_ENABLED) {
+    const tools=await loadDiagnosticTools();tools.setDiagnosticRecipient('');
+    diagnosticRecipientEditing=false;diagnosticRecipientMessage='recipientCleared';
+    diagnosticUpload={status:'idle',key:null,reportId:null};updateDiagnosticControls();
+  }
   else if (action === "debug-send" && DIAGNOSTICS_ENABLED) await uploadDiagnostic();
   else if (action === "debug-share" && DIAGNOSTICS_ENABLED) await shareDiagnostic();
   else if (action === "debug-self-test" && DIAGNOSTICS_ENABLED) await testThisDevice();
@@ -575,12 +581,23 @@ app.addEventListener("change", async (event) => {
 });
 
 app.addEventListener("input", (event) => {
+  if(DIAGNOSTICS_ENABLED && event.target.matches('[data-diagnostic-recipient]')) {
+    diagnosticRecipientEditing=true;diagnosticRecipientDraft=event.target.value;diagnosticRecipientMessage='recipientUnsaved';
+    document.querySelectorAll('[data-action=debug-send]').forEach(button=>{button.disabled=true;});
+    document.querySelectorAll('[data-recipient-status]').forEach(node=>{node.textContent=t('v3.recipientUnsaved');});
+  }
   const index = event.target.dataset.setupName;
   if (index !== undefined && ui.setupPlayers[Number(index)].newPlayer) ui.setupPlayers[Number(index)].name = event.target.value;
 });
 
 app.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if(DIAGNOSTICS_ENABLED && event.target.matches('[data-debug-recipient-form]')) {
+    const tools=await loadDiagnosticTools();
+    try {tools.setDiagnosticRecipient(new FormData(event.target).get('recipient'));diagnosticRecipientMessage='recipientSaved';diagnosticRecipientEditing=false;diagnosticUpload={status:'idle',key:null,reportId:null};}
+    catch {diagnosticRecipientMessage='recipientInvalid';}
+    updateDiagnosticControls();return;
+  }
   if (ui.observation) return;
   if (event.target.id === "player-form") await advancePlayerSetup();
   if (event.target.id === "variable-score-form") await commitEntry(scoreEntry(Number(new FormData(event.target).get("score") ?? document.querySelector("#variable-score")?.value)));
@@ -658,10 +675,12 @@ function diagnosticKey(details) { return `${details?.attemptId ?? 'pending'}:${d
 
 function diagnosticUploadControls() {
   if(!DIAGNOSTICS_ENABLED || !ui.lastDiagnostic)return '';
+  const recipient=diagnosticTools?.getDiagnosticRecipient() ?? '';
+  const recipientControls=`<form class="diagnostic-recipient" data-debug-recipient-form><label>${t('v3.recipientLabel')}<input type="email" name="recipient" data-diagnostic-recipient maxlength="254" autocomplete="off" value="${escapeHtml(diagnosticRecipientEditing?diagnosticRecipientDraft:recipient)}" required /></label><div class="diagnostic-fallback-actions"><button class="button quiet" type="submit">${t('v3.recipientSave')}</button><button class="button quiet" type="button" data-action="debug-clear-recipient" ${recipient?'':'disabled'}>${t('v3.recipientClear')}</button></div><p>${t('v3.recipientHelp')}</p><p data-recipient-status role="status">${diagnosticRecipientMessage?t('v3.'+diagnosticRecipientMessage):recipient?'':t('v3.recipientRequired')}</p></form>`;
   const status=diagnosticUpload.key===diagnosticKey(ui.lastDiagnostic) ? diagnosticUpload.status : 'idle';
-  const failureKey=diagnosticUpload.reason==='offline'?'diagnosticOffline':diagnosticUpload.reason==='rejected'?'diagnosticRejected':'diagnosticSendError';
+  const failureKey=diagnosticUpload.reason==='recipient'?'recipientRequired':diagnosticUpload.reason==='offline'?'diagnosticOffline':diagnosticUpload.reason==='rejected'?'diagnosticRejected':'diagnosticSendError';
   const exported=diagnosticTools?.diagnosticExport(ui.lastDiagnostic);
-  return `<button class="button quiet" data-action="debug-send" ${diagnosticUpload.status==='sending'?'disabled':''}>${t(status==='sending'?'v3.sendingDiagnostic':'v3.sendDiagnostic')}</button><p class="debug-send-status" role="status">${status==='sent'?escapeHtml(t('v3.diagnosticSent',{id:diagnosticUpload.reportId.slice(0,8)})):status==='error'?t('v3.'+failureKey):''}</p>${exported?`<div class="diagnostic-fallback"><p>${t('v3.diagnosticFallbackHelp')}</p><div class="diagnostic-fallback-actions"><a class="button quiet" data-debug-mail href="${escapeHtml(exported.mailto)}">${t('v3.diagnosticMail')}</a><button class="button quiet" data-action="debug-share">${t('v3.diagnosticShare')}</button></div><p role="status">${diagnosticShare?.key===diagnosticKey(ui.lastDiagnostic)?t('v3.'+diagnosticShare.message):''}</p></div>`:''}`;
+  return `${recipientControls}<button class="button quiet" data-action="debug-send" ${diagnosticUpload.status==='sending'||!recipient||diagnosticRecipientEditing?'disabled':''}>${t(status==='sending'?'v3.sendingDiagnostic':'v3.sendDiagnostic')}</button><p class="debug-send-status" role="status">${status==='sent'?escapeHtml(t('v3.diagnosticSent',{id:diagnosticUpload.reportId.slice(0,8)})):status==='error'?t('v3.'+failureKey):''}</p>${exported?`<div class="diagnostic-fallback"><p>${t('v3.diagnosticFallbackHelp')}</p><div class="diagnostic-fallback-actions"><a class="button quiet" data-debug-mail href="${escapeHtml(exported.mailto)}">${t('v3.diagnosticMail')}</a><button class="button quiet" data-action="debug-share">${t('v3.diagnosticShare')}</button></div><p role="status">${diagnosticShare?.key===diagnosticKey(ui.lastDiagnostic)?t('v3.'+diagnosticShare.message):''}</p></div>`:''}`;
 }
 
 function updateDiagnosticControls() {
@@ -700,7 +719,7 @@ function lastDiagnosticControls() {
 }
 
 async function uploadDiagnostic() {
-  if(!DIAGNOSTICS_ENABLED || !ui.lastDiagnostic || diagnosticUpload.status==='sending')return;
+  if(!DIAGNOSTICS_ENABLED || !ui.lastDiagnostic || diagnosticUpload.status==='sending' || diagnosticRecipientEditing)return;
   const details=ui.lastDiagnostic,key=diagnosticKey(details);
   // A retry of an ambiguous timeout reuses its public report ID for deduplication.
   const reportId=diagnosticUpload.key===key && diagnosticUpload.status==='error' ? diagnosticUpload.reportId : crypto.randomUUID();
@@ -817,7 +836,7 @@ function pairingModal() {
   if(!pair)return '';
   let body='';
   if(pair.step==='offer' || pair.step==='answer') {
-    body=`<p class="dialog-help">${t(pair.step==='offer'?'v3.offerHelp':'v3.answerHelp')}</p><div class="qr-frame"><canvas data-pair-qr role="img" aria-label="QR code"></canvas></div><button class="button quiet" data-action="pair-zoom" aria-pressed="${!!pair.expanded}">${t(pair.expanded?'v3.reduceQR':'v3.expandQR')}</button>${pair.step==='offer' ? `<p class="dialog-help">${t('v3.nextHelp')}</p><button class="button primary full" data-action="pair-next">${t('v3.next')}</button>` : `<p class="pair-status" role="status">${t('v3.waiting')}</p>`}`;
+    body=`<p class="dialog-help">${t(pair.step==='offer'?'v3.offerHelp':'v3.answerHelp')}</p><div class="qr-frame"><canvas data-pair-qr role="img" aria-label="QR code"></canvas></div>${pair.step==='offer' ? `<p class="dialog-help">${t('v3.nextHelp')}</p><button class="button primary full" data-action="pair-next">${t('v3.next')}</button>` : `<p class="pair-status" role="status">${t('v3.waiting')}</p>`}`;
   } else if(pair.step.startsWith('scan-')) {
     body=`<h3>${t(pair.step==='scan-offer'?'v3.scanOffer':'v3.scanAnswer')}</h3><p class="dialog-help">${t('v3.scanHelp')}</p><div class="scanner-frame"><video data-qr-video autoplay playsinline muted></video><div class="scanner-guide" aria-hidden="true"></div></div><p class="scan-message" data-scan-message role="status"></p>`;
   } else if(pair.step==='added') {
@@ -826,7 +845,7 @@ function pairingModal() {
     body=`<p class="constraint-warning" role="alert">${t('v3.'+pair.error)}</p><button class="button primary full" data-action="pair-retry">${t('v3.retry')}</button>`;
   } else body=`<p class="pair-status" role="status">${t(pair.step==='preparing'?'v3.preparing':'v3.connecting')}</p>`;
   const diagnostics=DIAGNOSTICS_ENABLED && pair.diagnostics && !pair.step.startsWith('scan-') ? `<details class="pair-diagnostics" ${['connecting','error'].includes(pair.step)?'open':''}><summary>${t('v3.diagDetails')}</summary><button class="button quiet" data-action="pair-copy">${t('v3.copyDiagnostic')}</button><p>${t('v3.diagHelp')}</p><pre data-pair-diagnostics tabindex="0">${escapeHtml(JSON.stringify(pair.diagnostics,null,2))}</pre><p>${t('v3.sendDiagnosticHelp')}</p><div data-debug-upload-controls>${diagnosticUploadControls()}</div></details>` : '';
-  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}${DIAGNOSTICS_ENABLED ? ` <small class="pair-version">v${PAIRING_BUILD}</small>` : ''}</h2>${body}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p>${connectionPermissionHelp(pair)}`:''}${diagnostics}${pair.step!=='added'?`<button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),`pair-modal ${pair.expanded && ['offer','answer'].includes(pair.step)?'qr-expanded':''}`);
+  return dialogFrame(`<h2>${t(pair.role==='manager'?'v3.addObserver':'v3.join')}${DIAGNOSTICS_ENABLED ? ` <small class="pair-version">v${PAIRING_BUILD}</small>` : ''}</h2>${body}${pair.step!=='added'?`<p class="pair-network">${t('v3.localHelp')}</p>${connectionPermissionHelp(pair)}`:''}${diagnostics}${pair.step!=='added'?`<button class="button quiet full" data-action="close-modal">${t('v3.cancel')}</button>`:''}`,t(pair.role==='manager'?'v3.addObserver':'v3.join'),'pair-modal');
 }
 
 function renderPairingMedia() {

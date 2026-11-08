@@ -206,10 +206,6 @@ html[dir="rtl"] .score-table tr > *:last-child { border-left: 0; }
 .pair-version { white-space: nowrap; color: var(--muted); font-size: .55em; }
 .qr-frame { width: min(100%,360px); margin: 1rem auto; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: white; }
 .qr-frame canvas { display: block; width: 100% !important; height: auto !important; aspect-ratio: 1; image-rendering: pixelated; }
-.modal-backdrop:has(.pair-modal.qr-expanded) { padding: 0; place-items: center; }
-.pair-modal.qr-expanded { width: 100vw; max-width: none; max-height: 100dvh; padding: 3.2rem .25rem .5rem; border-radius: 0; }
-.qr-expanded .qr-frame { width: min(100%,calc(100dvh - 15rem)); margin: .5rem auto; }
-.qr-expanded h2,.qr-expanded .dialog-help,.qr-expanded .pair-network,.qr-expanded .pair-diagnostics,.qr-expanded .pair-help { display: none; }
 .pair-help { margin: .8rem 0; padding: .2rem .8rem; text-align: start; font-size: .82rem; line-height: 1.5; background: var(--green-soft); border-radius: 10px; }
 .pair-help summary { cursor: pointer; padding-block: .6rem; font-weight: 700; }
 .pair-help h3 { margin: .2rem 0 .5rem; font-size: .9rem; }
@@ -224,6 +220,8 @@ html[dir="rtl"] .score-table tr > *:last-child { border-left: 0; }
 .last-diagnostic { margin: .9rem 0; font-size: .8rem; color: var(--muted); text-align: start; }
 .last-diagnostic summary { cursor: pointer; padding: .6rem 0; }
 .debug-send-status { overflow-wrap: anywhere; }
+.diagnostic-recipient { margin-block: .75rem; padding: .7rem; border: 1px solid var(--line); border-radius: 10px; }
+.diagnostic-recipient input { width: 100%; min-width: 0; direction: ltr; }
 .diagnostic-fallback { border-top: 1px solid var(--line); margin-top: .8rem; padding-top: .4rem; }
 .diagnostic-fallback-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .diagnostic-fallback-actions a { text-decoration: none; }

@@ -1,8 +1,25 @@
 import { BUILD_NUMBER, DIAGNOSTICS_ENABLED } from './build-profile.js';
 
-// Public form destination, not a credential. Excluded from production artifacts.
-const ENDPOINT = 'https://formsubmit.co/ajax/alfred.oc.agent@gmail.com';
-const MAIL_DESTINATION = 'alfred.oc.agent@gmail.com';
+// Contact details are supplied locally by the tester, never shipped in assets.
+const RECIPIENT_STORAGE_KEY = 'yams-test-diagnostic-recipient';
+let recipientInMemory = '';
+export function normalizeRecipient(value) {
+  if(typeof value!=='string')return '';
+  const address=value.trim();
+  return address.length<=254 && /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(address) ? address : '';
+}
+export function getDiagnosticRecipient() {
+  try {const storage=globalThis.window?.localStorage;return storage ? normalizeRecipient(storage.getItem(RECIPIENT_STORAGE_KEY)) : recipientInMemory;}
+  catch {return recipientInMemory;}
+}
+export function setDiagnosticRecipient(value) {
+  const address=normalizeRecipient(value);
+  if(value && !address)throw new DiagnosticSendError('recipient');
+  recipientInMemory=address;
+  try {const storage=globalThis.window?.localStorage;if(address)storage?.setItem(RECIPIENT_STORAGE_KEY,address);else storage?.removeItem(RECIPIENT_STORAGE_KEY);}
+  catch { /* Private browsing may retain the choice in memory only. */ }
+  return address;
+}
 const candidateKeys = ['total','udp','tcp','mdns','ipv4','ipv6'];
 const nativeCandidateKeys = [...candidateKeys,'host','srflx','prflx','relay','unknownAddress'];
 const pairKeys = ['total','frozen','waiting','inProgress','succeeded','failed','other','nominated','selected'];
@@ -87,10 +104,11 @@ export function createDiagnosticReport(input, { reportId = crypto.randomUUID(), 
 function subject(report) {return `[YAMS-TEST] v${BUILD_NUMBER} ${report.diagnostic.role} ${report.device.browser} ${report.diagnostic.attemptId??'no-attempt'}`;}
 
 // The same outbound allowlist applies to email drafts, shared files and HTTPS.
-export function diagnosticExport(input, options) {
+export function diagnosticExport(input, options = {}) {
   const report=createDiagnosticReport(input,options);
   const text=JSON.stringify(report,null,2);
-  const mailto=`mailto:${MAIL_DESTINATION}?subject=${encodeURIComponent(subject(report))}&body=${encodeURIComponent(text)}`;
+  const recipient=normalizeRecipient(options.recipient ?? getDiagnosticRecipient());
+  const mailto=`mailto:${encodeURIComponent(recipient).replace('%40','@')}?subject=${encodeURIComponent(subject(report))}&body=${encodeURIComponent(text)}`;
   return {text,mailto,reportId:report.reportId,fileName:`yams-diagnostic-v${BUILD_NUMBER}-${report.diagnostic.role}-${report.reportId.slice(0,8)}.json`};
 }
 
@@ -98,15 +116,17 @@ export class DiagnosticSendError extends Error {
   constructor(code,status=null){super(code);this.name='DiagnosticSendError';this.code=code;this.status=status;}
 }
 
-export async function sendDiagnostic(input, { fetchImpl = globalThis.fetch, reportId } = {}) {
+export async function sendDiagnostic(input, { fetchImpl = globalThis.fetch, reportId, recipient = getDiagnosticRecipient() } = {}) {
   if (!DIAGNOSTICS_ENABLED) throw Error('diagnostics-disabled');
+  const destination=normalizeRecipient(recipient);
+  if(!destination)throw new DiagnosticSendError('recipient');
   if (globalThis.navigator?.onLine === false) throw new DiagnosticSendError('offline');
   const report=createDiagnosticReport(input,{reportId});
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),20_000);
   try {
     // FormSubmit requires a Referer. Send only the public origin, never a page URL.
-    const response=await fetchImpl(ENDPOINT,{method:'POST',credentials:'omit',referrerPolicy:'origin',
+    const response=await fetchImpl(`https://formsubmit.co/ajax/${encodeURIComponent(destination)}`,{method:'POST',credentials:'omit',referrerPolicy:'origin',
       headers:{'Content-Type':'application/json','Accept':'application/json'},signal:controller.signal,
       body:JSON.stringify({_subject:subject(report),
         _captcha:'false',_template:'table',report:JSON.stringify(report,null,2)}),
